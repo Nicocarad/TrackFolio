@@ -3,7 +3,7 @@
   <button hx-post="/refresh" hx-target="#dashboard" hx-swap="innerHTML" hx-disabled-elt="this">Aggiorna prezzi</button>
 </div>
 {% if notice %}<p class="msg ok" role="status">{{ notice }}</p>{% endif %}
-{% for warning in warnings %}<p class="msg warn" role="alert">{{ warning }}</p>{% endfor %}
+{% for w in warnings %}<p class="msg warn" role="alert">{{ w | warning }}</p>{% endfor %}
 
 {% if empty %}
   {% if warnings %}

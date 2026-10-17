@@ -1,7 +1,9 @@
 """Portfolio use cases coordinating persistence, market data, and pure calculations."""
 
 import logging
+from dataclasses import dataclass
 from datetime import date, timedelta
+from enum import StrEnum
 
 import pandas as pd
 from sqlmodel import Session
@@ -18,6 +20,28 @@ from trackfolio.models import Asset, Transaction
 from trackfolio.repositories import assets, prices, transactions
 
 logger = logging.getLogger(__name__)
+
+
+class WarningCode(StrEnum):
+    """Kinds of data problems the service reports without hiding the rest of the result."""
+
+    NO_PRICE = "no_price"  # subject: ticker
+    NO_FX = "no_fx"  # subject: currency
+    EXCLUDED = "excluded"  # subject: comma-separated tickers left out of the dashboard
+    REFRESH_FAILED = "refresh_failed"  # subject: ticker, detail: error, cached_until if any
+    DATA_ERROR = "data_error"  # detail: technical message
+
+
+@dataclass(frozen=True)
+class DataWarning:
+    """A structured warning; presentation and language are up to the caller."""
+
+    code: WarningCode
+    subject: str = ""
+    detail: str = ""
+    cached_until: date | None = None
+
+
 REFRESH_OVERLAP_DAYS = 5
 
 
@@ -95,7 +119,7 @@ class PortfolioService:
         tickers = {item.ticker for item in transactions.list_transactions(self.session)}
         return {ticker: stored.get(ticker) for ticker in tickers}
 
-    def refresh_prices(self) -> tuple[int, list[str]]:
+    def refresh_prices(self) -> tuple[int, list[DataWarning]]:
         """Refresh cached asset and FX prices, retaining cache on provider failures."""
         all_transactions = transactions.list_transactions(self.session)
         if not all_transactions:
@@ -107,7 +131,7 @@ class PortfolioService:
         requested = tickers + fx_tickers
         first_trade = min(item.date for item in all_transactions)
         end = date.today() + timedelta(days=1)
-        warnings: list[str] = []
+        warnings: list[DataWarning] = []
         saved = 0
         for ticker in requested:
             try:
@@ -125,18 +149,13 @@ class PortfolioService:
                 self.session.rollback()
                 logger.warning("Price refresh failed for %s: %s", ticker, error)
                 cached = prices.get_prices(self.session, ticker)
-                if cached.empty:
-                    warnings.append(f"{ticker}: aggiornamento fallito e cache assente ({error})")
-                else:
-                    warnings.append(
-                        f"{ticker}: aggiornamento fallito; uso cache fino al "
-                        f"{cached.index.max().date()} ({error})"
-                    )
+                until = None if cached.empty else cached.index.max().date()
+                warnings.append(DataWarning(WarningCode.REFRESH_FAILED, ticker, str(error), until))
         return saved, warnings
 
     def dashboard_data(
         self,
-    ) -> tuple[pd.DataFrame, pd.DataFrame, PortfolioMetrics, list[str]]:
+    ) -> tuple[pd.DataFrame, pd.DataFrame, PortfolioMetrics, list[DataWarning]]:
         """Return historical valuation, current positions, KPIs, and data warnings."""
         tx_models = transactions.list_transactions(self.session)
         if not tx_models:
@@ -148,11 +167,11 @@ class PortfolioService:
         tickers = sorted(set(tx["ticker"]))
         local_prices: dict[str, pd.Series] = {}
         excluded: list[str] = []
-        warnings: list[str] = []
+        warnings: list[DataWarning] = []
         for ticker in tickers:
             cached = prices.get_prices(self.session, ticker)
             if cached.empty:
-                warnings.append(f"Nessun prezzo in cache per {ticker}")
+                warnings.append(DataWarning(WarningCode.NO_PRICE, ticker))
                 excluded.append(ticker)
             else:
                 local_prices[ticker] = cached
@@ -161,7 +180,7 @@ class PortfolioService:
         for currency in set(ticker_currency.values()) - {"EUR"}:
             cached = prices.get_prices(self.session, f"EUR{currency}=X")
             if cached.empty:
-                warnings.append(f"Nessun tasso di cambio in cache per {currency}/EUR")
+                warnings.append(DataWarning(WarningCode.NO_FX, currency))
                 excluded += [t for t in local_prices if ticker_currency.get(t) == currency]
             else:
                 rates[currency] = cached
@@ -170,7 +189,7 @@ class PortfolioService:
         if not local_prices:
             return pd.DataFrame(), pd.DataFrame(), calculate_metrics(0, 0), warnings
         if excluded:
-            warnings.append(f"Esclusi dal dashboard: {', '.join(sorted(set(excluded)))}")
+            warnings.append(DataWarning(WarningCode.EXCLUDED, ", ".join(sorted(set(excluded)))))
             tx = tx[tx["ticker"].isin(local_prices)]
         price_frame = pd.concat(local_prices.values(), axis=1).sort_index()
         fx = pd.DataFrame(index=price_frame.index)
@@ -183,7 +202,7 @@ class PortfolioService:
         try:
             history = build_portfolio_timeseries(tx, price_frame, asset_currencies, fx)
         except ValueError as error:
-            warnings.append(str(error))
+            warnings.append(DataWarning(WarningCode.DATA_ERROR, detail=str(error)))
             return pd.DataFrame(), pd.DataFrame(), calculate_metrics(0, 0), warnings
         asset_info = {t: (a.name, a.currency.upper()) for t, a in asset_map.items() if a}
         holdings = build_holdings(calculate_positions(tx), price_frame, fx, asset_info)

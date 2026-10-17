@@ -8,7 +8,7 @@ Product roadmap: [README.md](README.md#roadmap).
 
 | ID | File | Problem | Fix |
 |----|------|---------|-----|
-| C8 | `web/`, `services/` | Italian warnings built in the service, English errors shown in the page. | Return structured data from the service; translate in the templates. |
+| C8 | `web/routes/transactions.py` | Validation errors raised by `core/` and `services/` (`ValueError`) are English and shown as is in the form. | Raise typed errors with codes and translate them in `web/messages.py`. |
 
 ## E. Multi-user hosted service
 

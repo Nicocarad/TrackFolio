@@ -153,3 +153,14 @@ def test_dashboard_shows_realized_dividends_and_per_position_columns(client: Tes
     ):
         assert label in page
     assert "€ 4.00" in page.replace("\xa0", " ")  # net dividend: 10 * 0.5 - 1
+
+
+def test_refresh_failure_is_reported_in_italian(client: TestClient) -> None:
+    class Broken(FakeProvider):
+        def get_history(self, ticker: str, start: date, end: date) -> pd.Series:
+            raise RuntimeError("down")
+
+    client.post("/transactions", data=_form())
+    client.app.dependency_overrides[get_provider] = lambda: Broken()  # type: ignore[attr-defined]
+    page = client.post("/refresh").text
+    assert "ABC: aggiornamento fallito e cache assente (down)" in page

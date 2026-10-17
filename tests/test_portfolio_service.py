@@ -9,7 +9,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from trackfolio.models import Asset, Transaction, TransactionType
 from trackfolio.repositories import assets as assets_repo
 from trackfolio.repositories import prices as prices_repo
-from trackfolio.services.portfolio_service import PortfolioService
+from trackfolio.services.portfolio_service import PortfolioService, WarningCode
 
 
 class FakeProvider:
@@ -141,7 +141,7 @@ def test_refresh_survives_unexpected_provider_error(service: PortfolioService) -
     count, warnings = service.refresh_prices()
     assert count == 0
     assert len(warnings) == 1
-    assert "cache assente" in warnings[0]
+    assert (warnings[0].code, warnings[0].cached_until) == (WarningCode.REFRESH_FAILED, None)
 
 
 def test_refresh_failure_with_cache_keeps_cache(service: PortfolioService) -> None:
@@ -154,7 +154,8 @@ def test_refresh_failure_with_cache_keeps_cache(service: PortfolioService) -> No
 
     service.provider = Broken()
     _, warnings = service.refresh_prices()
-    assert "uso cache" in warnings[0]
+    assert warnings[0].code == WarningCode.REFRESH_FAILED
+    assert warnings[0].cached_until is not None
     assert not prices_repo.get_prices(service.session, "ABC").empty
 
 
@@ -177,7 +178,7 @@ def test_dashboard_without_price_cache_warns(service: PortfolioService) -> None:
     service.save_transaction(_buy())
     history, holdings, _, warnings = service.dashboard_data()
     assert history.empty and holdings.empty
-    assert warnings
+    assert [w.code for w in warnings] == [WarningCode.NO_PRICE]
 
 
 def test_dashboard_non_eur_asset_and_missing_fx(service: PortfolioService) -> None:
@@ -194,7 +195,7 @@ def test_dashboard_non_eur_asset_and_missing_fx(service: PortfolioService) -> No
     service.save_transaction(_buy("US1"))
     service.refresh_prices()
     _, _, _, warnings = service.dashboard_data()
-    assert any("cambio" in item for item in warnings)
+    assert [(w.code, w.subject) for w in warnings] == [(WarningCode.NO_FX, "USD")]
 
     class WithFx(UsdProvider):
         def get_history(self, ticker: str, start: date, end: date) -> pd.Series:
@@ -223,7 +224,8 @@ def test_dashboard_is_partial_when_one_ticker_has_no_price(service: PortfolioSer
 
     assert not history.empty
     assert list(holdings.index) == ["AAA"]
-    assert any("BBB" in item for item in warnings)
+    assert (WarningCode.NO_PRICE, "BBB") in [(w.code, w.subject) for w in warnings]
+    assert any(w.code == WarningCode.EXCLUDED and w.subject == "BBB" for w in warnings)
 
 
 def test_edit_with_a_new_object_for_an_already_loaded_row(service: PortfolioService) -> None:

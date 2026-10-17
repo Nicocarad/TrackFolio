@@ -4,6 +4,8 @@ from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
 
+from trackfolio.web.messages import warning_text
+
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
 
 
@@ -23,3 +25,4 @@ def _percent(value: float | None) -> str:
 
 
 templates.env.filters["pct"] = _percent
+templates.env.filters["warning"] = warning_text
