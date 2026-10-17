@@ -10,7 +10,6 @@ Product roadmap: [README.md](README.md#roadmap).
 |----|------|---------|-----|
 | A5 | `services/portfolio_service.py` | Deleting a BUY is not validated by replaying the ticker history (`validate_transaction` covers add/edit only). | Replay the ticker history on delete and require quantity ≥ 0 throughout. |
 | A6 | `core/metrics.py`, `core/timeseries.py` | Invested capital is a net cash flow; after a profitable exit it can be ≤ 0 and return % is wrong. | Use open-position cost basis, or XIRR/TWR (see D). |
-| A10 | `models.py` | `table=True` models do not enforce `gt`/`ge`; tickers not upper-cased; SQLite FKs off. | Always validate via `validate_transaction`; add `CheckConstraint`s and `PRAGMA foreign_keys=ON`. |
 | A12 | `models.py`, `core/` | `Transaction.currency` duplicates `Asset.currency` and allows mixed currencies per ticker. | Drop the field and derive the currency from the asset; add a dedicated settlement-currency field only if ever needed. |
 
 ## B. Services and data
@@ -19,7 +18,6 @@ Product roadmap: [README.md](README.md#roadmap).
 |----|------|---------|-----|
 | B5 | `market_data/instrument_search.py` | A lookup can make ~50 sequential requests; no result cache. | Cache results in the DB, build `Asset` from quote data. |
 | B9 | `services/portfolio_service.py` | A missing price or FX series hides the whole dashboard. | Return partial data with warnings. |
-| B10 | `db.py`, `config.py` | Engine and data dir created at import; no pragmas (WAL, busy timeout); no migrations; `BASE_CURRENCY` unused while "EUR" is hardcoded. | Lazy engine, pragmas, use `BASE_CURRENCY`, adopt migrations before the schema changes. |
 
 ## C. UI
 
@@ -53,8 +51,8 @@ Design in [IMPROVEMENTS.md](IMPROVEMENTS.md#2-hosted-multi-user-service). Order 
 | ID | Item |
 |----|------|
 | E1 | Migrate UI to FastAPI + HTMX + Jinja under `src/trackfolio/web/`; remove Streamlit. |
-| E2 | Settings from environment variables (pydantic-settings); drop import-time engine creation (B10). |
-| E3 | PostgreSQL support and Alembic migrations. |
+| E2 | Settings from environment variables (pydantic-settings). |
+| E3 | PostgreSQL support and Alembic migrations (also needed to add the `CHECK` constraints to databases created before they existed, and for A12). |
 | E4 | `user` table; `user_id` on `transaction`; `PortfolioService` scoped to a user. |
 | E5 | Authentication: argon2 password hashing, secure session cookies, CSRF protection, login/logout/register pages. |
 | E6 | Authorization tests proving cross-user isolation. |

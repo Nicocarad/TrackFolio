@@ -43,7 +43,7 @@ Dependencies flow one way: `ui → services → core / repositories / market_dat
 | `BACKLOG.md`, `IMPROVEMENTS.md` | Open defects and design direction from code review |
 | `.claude/`, `CLAUDE.md` | Claude Code settings, hooks and project rules |
 
-The database is created at `data/trackfolio.db` (git-ignored).
+The database is created at `data/trackfolio.db` (git-ignored), in WAL mode with foreign keys enforced. Tables created by older versions lack the `CHECK` constraints until migrations exist.
 
 <details>
 <summary>Data model</summary>

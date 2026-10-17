@@ -52,3 +52,37 @@ def test_save_asset_normalizes_ticker(session: Session) -> None:
     assets.save_asset(session, Asset(ticker="abc", name="A", currency="EUR"))
     assert assets.get_asset(session, "abc") is not None
     assert [a.ticker for a in assets.get_assets(session)] == ["ABC"]
+
+
+def test_engine_enforces_foreign_keys_and_checks() -> None:
+    from sqlalchemy import text
+    from sqlalchemy.exc import IntegrityError
+    from sqlmodel import Session, SQLModel, create_engine
+
+    from trackfolio.db import configure_engine
+    from trackfolio.models import Transaction, TransactionType
+
+    engine = configure_engine(create_engine("sqlite://"))
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        session.add(
+            Transaction(
+                date=date(2024, 1, 2),
+                ticker="NOPE",
+                type=TransactionType.BUY,
+                quantity=1,
+                price=1,
+                currency="EUR",
+            )
+        )
+        with pytest.raises(IntegrityError):
+            session.commit()
+        session.rollback()
+        session.add(Asset(ticker="ABC", name="ABC", currency="EUR"))
+        with pytest.raises(IntegrityError):
+            session.execute(
+                text(
+                    'INSERT INTO "transaction" (date, ticker, type, quantity, price, fees,'
+                    " currency) VALUES ('2024-01-02', 'ABC', 'BUY', -1, 1, 0, 'EUR')"
+                )
+            )

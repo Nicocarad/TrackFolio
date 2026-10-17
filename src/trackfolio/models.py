@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from datetime import date as Date
 from enum import StrEnum
 
+from sqlalchemy import CheckConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -28,6 +29,12 @@ class Asset(SQLModel, table=True):
 class Transaction(SQLModel, table=True):
     """A manually entered purchase or sale."""
 
+    __table_args__ = (
+        CheckConstraint("quantity > 0", name="ck_transaction_quantity"),
+        CheckConstraint("price >= 0", name="ck_transaction_price"),
+        CheckConstraint("fees >= 0", name="ck_transaction_fees"),
+    )
+
     id: int | None = Field(default=None, primary_key=True)
     date: Date = Field(index=True)
     ticker: str = Field(foreign_key="asset.ticker", index=True)
@@ -41,6 +48,8 @@ class Transaction(SQLModel, table=True):
 
 class Price(SQLModel, table=True):
     """Daily closing price cache, keyed by ticker and date."""
+
+    __table_args__ = (CheckConstraint("close >= 0", name="ck_price_close"),)
 
     ticker: str = Field(primary_key=True)
     date: Date = Field(primary_key=True)
