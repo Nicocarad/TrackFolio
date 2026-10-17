@@ -1,10 +1,15 @@
 """Position and cost-basis calculations without I/O."""
 
+import math
 from datetime import date
+from decimal import Decimal
+from numbers import Real
 
 import pandas as pd
 
 from trackfolio.models import TransactionType
+
+_EPSILON = 1e-9
 
 
 def _ordered(transactions: pd.DataFrame) -> pd.DataFrame:
@@ -16,11 +21,10 @@ def _ordered(transactions: pd.DataFrame) -> pd.DataFrame:
     result["date"] = pd.to_datetime(result["date"]).dt.date
     result["ticker"] = result["ticker"].str.upper()
     result["type"] = result["type"].astype(str).str.upper()
-    if "id" in result.columns:
-        result = result.sort_values(["date", "id"], kind="stable")
-    else:
-        result = result.sort_values(["date"], kind="stable")
-    return result
+    # BUY before SELL within a day, so entry order cannot make a valid day look oversold.
+    result["_sell"] = result["type"] == TransactionType.SELL.value
+    keys = ["date", "_sell", "id"] if "id" in result.columns else ["date", "_sell"]
+    return result.sort_values(keys, kind="stable").drop(columns="_sell")
 
 
 def validate_transaction(
@@ -49,28 +53,44 @@ def validate_transaction(
         raise ValueError("Quantity must be greater than zero")
     if price < 0 or fees < 0:
         raise ValueError("Price and fees cannot be negative")
-    if tx_type != TransactionType.SELL.value:
-        return
 
+    history = existing.copy()
+    if not history.empty and transaction_id is not None and "id" in history:
+        history = history[history["id"] != transaction_id]
+    proposed = {**transaction, "date": tx_date, "ticker": ticker, "type": tx_type}
+    proposed.update(quantity=quantity, price=price, fees=fees)
+    history = pd.concat([history, pd.DataFrame([proposed])], ignore_index=True)
+    history = _ordered(history)
+    history = history[history["ticker"] == ticker]
+    _check_currencies(history)
     holdings = 0.0
-    if not existing.empty:
-        history = _ordered(existing)
-        if transaction_id is not None and "id" in history:
-            history = history[history["id"] != transaction_id]
-        history = history[(history["ticker"] == ticker) & (history["date"] <= tx_date)]
-        for row in history.itertuples(index=False):
-            holdings += row.quantity if row.type == TransactionType.BUY.value else -row.quantity
-    if quantity > holdings + 1e-9:
-        raise ValueError(
-            f"Cannot sell {quantity:g}; only {max(holdings, 0):g} available on {tx_date}"
-        )
+    for row in history.itertuples(index=False):
+        holdings += row.quantity if row.type == TransactionType.BUY.value else -row.quantity
+        if holdings < -_EPSILON:
+            raise ValueError(
+                f"Cannot sell {row.quantity:g} of {ticker} on {row.date}; "
+                f"holdings would be negative ({holdings:g})"
+            )
+
+
+def _check_currencies(transactions: pd.DataFrame) -> None:
+    """Reject a ticker traded in more than one currency (cost basis would mix them)."""
+    if "currency" not in transactions.columns:
+        return
+    currencies = transactions.dropna(subset=["currency"]).groupby("ticker")["currency"]
+    for ticker, values in currencies:
+        if values.astype(str).str.upper().nunique() > 1:
+            raise ValueError(f"Multiple currencies for {ticker} are not supported")
 
 
 def _number(value: object, name: str) -> float:
     """Convert numeric transaction input without accepting arbitrary objects."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, (Real, Decimal)):
         raise ValueError(f"{name} must be numeric")
-    return float(value)
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{name} must be finite")
+    return number
 
 
 def calculate_positions(transactions: pd.DataFrame) -> pd.DataFrame:
@@ -79,8 +99,10 @@ def calculate_positions(transactions: pd.DataFrame) -> pd.DataFrame:
     if transactions.empty:
         return pd.DataFrame(columns=columns, dtype="float64").rename_axis("ticker")
 
+    ordered = _ordered(transactions)
+    _check_currencies(ordered)
     positions: dict[str, dict[str, float]] = {}
-    for row in _ordered(transactions).itertuples(index=False):
+    for row in ordered.itertuples(index=False):
         position = positions.setdefault(
             row.ticker, {"quantity": 0.0, "average_cost": 0.0, "realized_pnl": 0.0}
         )
@@ -91,7 +113,7 @@ def calculate_positions(transactions: pd.DataFrame) -> pd.DataFrame:
             position["average_cost"] = total_cost / new_quantity
             position["quantity"] = new_quantity
         elif row.type == TransactionType.SELL.value:
-            if row.quantity > position["quantity"] + 1e-9:
+            if row.quantity > position["quantity"] + _EPSILON:
                 raise ValueError(
                     f"Sell transaction exceeds holdings for {row.ticker} on {row.date}"
                 )
@@ -99,7 +121,8 @@ def calculate_positions(transactions: pd.DataFrame) -> pd.DataFrame:
                 row.quantity * (row.price - position["average_cost"]) - row.fees
             )
             position["quantity"] = max(0.0, position["quantity"] - row.quantity)
-            if position["quantity"] == 0:
+            if position["quantity"] <= _EPSILON:
+                position["quantity"] = 0.0
                 position["average_cost"] = 0.0
         else:
             raise ValueError(f"Unsupported transaction type: {row.type}")

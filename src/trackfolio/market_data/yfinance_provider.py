@@ -7,18 +7,26 @@ import yfinance as yf
 
 from trackfolio.models import Asset
 
+TIMEOUT_SECONDS = 10
+
 
 class YFinanceProvider:
     """Fetch daily closes and instrument metadata from Yahoo Finance."""
 
     def get_history(self, ticker: str, start: date, end: date) -> pd.Series:
         """Return daily closing prices, raising when Yahoo returns no history."""
-        history = yf.Ticker(ticker).history(
-            start=start.isoformat(),
-            end=end.isoformat(),
-            auto_adjust=False,
-            actions=False,
-        )
+        try:
+            history = yf.Ticker(ticker).history(
+                start=start.isoformat(),
+                end=end.isoformat(),
+                auto_adjust=False,
+                actions=False,
+                timeout=TIMEOUT_SECONDS,
+            )
+        except Exception as error:
+            raise RuntimeError(
+                f"Yahoo Finance history request failed for {ticker}: {error}"
+            ) from error
         if history.empty or "Close" not in history:
             raise ValueError(f"No price history returned for {ticker}")
         closes = history["Close"].dropna().astype("float64")
@@ -29,7 +37,11 @@ class YFinanceProvider:
     def get_asset(self, ticker: str) -> Asset:
         """Resolve a ticker using Yahoo Finance instrument metadata."""
         symbol = ticker.strip().upper()
-        info = yf.Ticker(symbol).get_info()
+        try:
+            # yfinance get_info() exposes no timeout parameter.
+            info = yf.Ticker(symbol).get_info()
+        except Exception as error:
+            raise RuntimeError(f"Yahoo Finance lookup failed for {symbol}: {error}") from error
         if not info or not info.get("currency"):
             raise ValueError(f"Yahoo Finance does not recognize ticker {symbol}")
         return Asset(
@@ -42,16 +54,19 @@ class YFinanceProvider:
 
     def search_tickers(self, query: str) -> list[Asset]:
         """Search Yahoo Finance symbols by name or ticker."""
-        response = yf.Search(query, max_results=10)
+        try:
+            quotes = yf.Search(query, max_results=10, timeout=TIMEOUT_SECONDS).quotes
+        except Exception as error:
+            raise RuntimeError(f"Yahoo Finance search failed for {query!r}: {error}") from error
         assets: dict[str, Asset] = {}
-        for quote in response.quotes:
+        for quote in quotes:
             symbol = quote.get("symbol")
             if not symbol:
                 continue
             normalized = str(symbol).upper()
             try:
                 asset = self.get_asset(normalized)
-            except ValueError:
+            except ValueError, RuntimeError:
                 currency = quote.get("currency")
                 if not currency:
                     continue

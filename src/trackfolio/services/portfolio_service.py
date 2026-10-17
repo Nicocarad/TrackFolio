@@ -124,7 +124,10 @@ class PortfolioService:
             fx[currency] = 1 / cached.reindex(price_frame.index).ffill()
         if warnings:
             return pd.DataFrame(), pd.DataFrame(), calculate_metrics(0, 0), warnings
-        history = build_portfolio_timeseries(tx, price_frame, fx)
+        asset_currencies = {
+            ticker: asset.currency.upper() for ticker, asset in asset_map.items() if asset
+        }
+        history = build_portfolio_timeseries(tx, price_frame, fx, asset_currencies)
         current = calculate_positions(tx)
         current_rows = []
         latest_date = price_frame.index.max()

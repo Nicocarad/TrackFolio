@@ -8,24 +8,10 @@ Product roadmap: [README.md](README.md#roadmap).
 
 | ID | File | Problem | Fix |
 |----|------|---------|-----|
-| A1 | `core/timeseries.py` | Price currency taken from the first transaction's currency, not the asset's. A USD-quoted ETF bought in EUR is converted with the wrong FX. | Pass a `ticker → Asset.currency` map. |
-| A2 | `core/timeseries.py` | A price column with no transactions raises `KeyError`. | Restrict price columns to traded tickers. |
-| A3 | `core/timeseries.py` | Days before a ticker's first price stay NaN and count as 0 in `sum()`. | Raise or warn when `qty ≠ 0` and the price is NaN. |
-| A4 | `core/positions.py` | Same-day SELL entered before its BUY passes `validate_transaction` but makes `calculate_positions` raise, crashing the dashboard. | Sort BUY before SELL within a day in both functions. |
-| A5 | `core/positions.py` | Back-dated SELL, edit or delete is checked only at its own date; later SELLs can exceed holdings. | Replay the whole ticker history and require quantity ≥ 0 throughout. |
+| A5 | `services/portfolio_service.py` | Deleting a BUY is not validated by replaying the ticker history (`validate_transaction` covers add/edit only). | Replay the ticker history on delete and require quantity ≥ 0 throughout. |
 | A6 | `core/metrics.py`, `core/timeseries.py` | Invested capital is a net cash flow; after a profitable exit it can be ≤ 0 and return % is wrong. | Use open-position cost basis, or XIRR/TWR (see D). |
-| A7 | `core/positions.py` | Position reset uses exact float equality; residuals like 1e-12 leave ghost positions. | Reset when quantity ≤ 1e-9. |
-| A8 | `core/positions.py` | Average cost ignores `currency`; mixed currencies per ticker are averaged together. | Reject multiple currencies per ticker, or convert. |
-| A9 | `core/positions.py` | `_number` rejects `np.int64`, `Decimal`, and accepts NaN/inf. | Accept `numbers.Real`/`Decimal`, require `math.isfinite`. |
 | A10 | `models.py` | `table=True` models do not enforce `gt`/`ge`; tickers not upper-cased; SQLite FKs off. | Always validate via `validate_transaction`; add `CheckConstraint`s and `PRAGMA foreign_keys=ON`. |
-| A11 | `core/timeseries.py` | Dead currency-collection loop; row-wise `apply` for signed quantity; unknown type counted as SELL. | Delete loop, use `np.where`, validate type. |
-| A12 | `models.py`, `core/` | `Transaction.currency` duplicates `Asset.currency` and causes A1 and A8. | Drop the field and derive the currency from the asset; add a dedicated settlement-currency field only if ever needed. |
-
-Tests to add:
-- `timeseries`: SELL with fees, mixed currencies, missing price/FX, price gap, two transactions on one day, empty frame.
-- `positions`: same-day BUY/SELL, back-dated SELL, full exit then re-buy, residual float, edit with `transaction_id`, multiple tickers.
-- `metrics`: loss and negative invested capital.
-- Replace float `==` with `pytest.approx` in `tests/test_timeseries.py`.
+| A12 | `models.py`, `core/` | `Transaction.currency` duplicates `Asset.currency` and allows mixed currencies per ticker. | Drop the field and derive the currency from the asset; add a dedicated settlement-currency field only if ever needed. |
 
 ## B. Services and data
 
@@ -33,24 +19,17 @@ Tests to add:
 |----|------|---------|-----|
 | B1 | `services/portfolio_service.py`, `repositories/` | `save_asset` commits before `save_transaction`: a failed validation leaves an orphan asset. Each repository function commits on its own. | Repositories only `add`; the service commits once and rolls back on error. |
 | B2 | `services/portfolio_service.py` | `refresh_prices` catches only `ValueError`/`RuntimeError`/`TimeoutError`; other provider errors abort the whole refresh. | Catch `Exception` per ticker and log it. |
-| B3 | `repositories/prices.py` | `save_prices` does one `session.get` per row (N+1). | Bulk upsert (`INSERT … ON CONFLICT`). |
 | B4 | `services/portfolio_service.py` | Refresh always downloads from the first transaction date. | Fetch from the last cached date minus a few days. |
-| B5 | `market_data/instrument_search.py` | No retry or 429 handling (a 429 silently falls back to Yahoo), no cache; a lookup can make ~50 sequential requests; ISIN is stamped on candidates not matched by ISIN. | Cache results in the DB, retry on 429/5xx honoring `Retry-After`, build `Asset` from quote data, optional API key from env. |
-| B6 | `market_data/instrument_search.py` | Assumes list/dict shapes in the OpenFIGI payload; the Yahoo fallback at the empty-data branch is not wrapped in `try`. | Validate types; wrap both paths the same way. |
-| B7 | `market_data/yfinance_provider.py` | No timeouts; exceptions not normalized. | Add `timeout`, wrap into `ValueError`/`RuntimeError`. |
+| B5 | `market_data/instrument_search.py` | A lookup can make ~50 sequential requests; no result cache. | Cache results in the DB, build `Asset` from quote data. |
 | B8 | `services/portfolio_service.py` | Currency-mismatch check duplicated; `get_asset` called in loops (3 places). | `_check_currency` helper and `get_assets_by_ticker`. |
 | B9 | `services/portfolio_service.py` | One missing price or FX series hides the whole dashboard; `continue` on missing FX is dead code; leading NaN and zero rates not handled. | Return partial data with warnings; guard NaN/0. |
 | B10 | `db.py`, `config.py` | Engine and data dir created at import; no pragmas (WAL, busy timeout); no migrations; `BASE_CURRENCY` unused while "EUR" is hardcoded. | Lazy engine, pragmas, use `BASE_CURRENCY`, adopt migrations before the schema changes. |
-| B11 | `repositories/` | Raw-string `order_by("date")`; `latest_price_date` loads a full row; ticker case inconsistent between repositories and the provider. | Use column expressions and `func.max`; normalize tickers to upper case. |
 | B12 | `services/portfolio_service.py` | `dashboard_data` (~65 lines) builds holdings inside the service. | Move holdings assembly to `core/`. |
 
 Tests to add:
 - `refresh_prices`: provider failure with and without cache, no transactions.
 - `dashboard_data`: non-EUR asset, missing FX, missing price cache.
 - Save with a currency mismatch; edit with `transaction.id`; edit or delete the only transaction.
-- `save_prices` idempotency and NaN dropping.
-- OpenFIGI: `URLError` fallback, empty `data`, malformed JSON, 429, double failure.
-- `YFinanceProvider` with mocks (empty history, timezone); `search_ticker("")`.
 
 ## C. UI
 

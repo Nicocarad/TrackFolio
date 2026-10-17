@@ -1,18 +1,19 @@
 """Transaction persistence helpers."""
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from trackfolio.models import Transaction
 
 
 def list_transactions(session: Session) -> list[Transaction]:
     """Return transactions in chronological order."""
-    statement = select(Transaction).order_by("date", "id")
+    statement = select(Transaction).order_by(col(Transaction.date), col(Transaction.id))
     return list(session.exec(statement).all())
 
 
 def save_transaction(session: Session, transaction: Transaction) -> Transaction:
     """Insert or update a transaction."""
+    transaction.ticker = transaction.ticker.upper()
     session.add(transaction)
     session.commit()
     session.refresh(transaction)
