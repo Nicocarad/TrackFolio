@@ -139,28 +139,36 @@ class PortfolioService:
         asset_map = self._assets_by_ticker()
         tickers = sorted(set(tx["ticker"]))
         local_prices: dict[str, pd.Series] = {}
+        excluded: list[str] = []
         warnings: list[str] = []
         for ticker in tickers:
             cached = prices.get_prices(self.session, ticker)
             if cached.empty:
                 warnings.append(f"Nessun prezzo in cache per {ticker}")
+                excluded.append(ticker)
             else:
                 local_prices[ticker] = cached
-        if len(local_prices) != len(tickers):
-            return pd.DataFrame(), pd.DataFrame(), calculate_metrics(0, 0), warnings
-        price_frame = pd.concat(local_prices.values(), axis=1).sort_index()
-        currencies = {asset.currency.upper() for asset in asset_map.values() if asset is not None}
-        fx = pd.DataFrame(index=price_frame.index)
-        fx["EUR"] = 1.0
-        for currency in currencies - {"EUR"}:
-            ticker = f"EUR{currency}=X"
-            cached = prices.get_prices(self.session, ticker)
+        ticker_currency = {t: a.currency.upper() for t, a in asset_map.items() if a}
+        rates: dict[str, pd.Series] = {}
+        for currency in set(ticker_currency.values()) - {"EUR"}:
+            cached = prices.get_prices(self.session, f"EUR{currency}=X")
             if cached.empty:
                 warnings.append(f"Nessun tasso di cambio in cache per {currency}/EUR")
-                continue
-            fx[currency] = 1 / cached.reindex(price_frame.index).ffill().replace(0, float("nan"))
-        if warnings:
+                excluded += [t for t in local_prices if ticker_currency.get(t) == currency]
+            else:
+                rates[currency] = cached
+        for ticker in excluded:
+            local_prices.pop(ticker, None)
+        if not local_prices:
             return pd.DataFrame(), pd.DataFrame(), calculate_metrics(0, 0), warnings
+        if excluded:
+            warnings.append(f"Esclusi dal dashboard: {', '.join(sorted(set(excluded)))}")
+            tx = tx[tx["ticker"].isin(local_prices)]
+        price_frame = pd.concat(local_prices.values(), axis=1).sort_index()
+        fx = pd.DataFrame(index=price_frame.index)
+        fx["EUR"] = 1.0
+        for currency, cached in rates.items():
+            fx[currency] = 1 / cached.reindex(price_frame.index).ffill().replace(0, float("nan"))
         asset_currencies = {
             ticker: asset.currency.upper() for ticker, asset in asset_map.items() if asset
         }

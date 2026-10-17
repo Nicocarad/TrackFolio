@@ -8,7 +8,6 @@ Product roadmap: [README.md](README.md#roadmap).
 
 | ID | File | Problem | Fix |
 |----|------|---------|-----|
-| A5 | `services/portfolio_service.py` | Deleting a BUY is not validated by replaying the ticker history (`validate_transaction` covers add/edit only). | Replay the ticker history on delete and require quantity ≥ 0 throughout. |
 | A12 | `models.py`, `core/` | `Transaction.currency` duplicates `Asset.currency` and allows mixed currencies per ticker. | Drop the field and derive the currency from the asset; add a dedicated settlement-currency field only if ever needed. |
 
 ## B. Services and data
@@ -16,7 +15,6 @@ Product roadmap: [README.md](README.md#roadmap).
 | ID | File | Problem | Fix |
 |----|------|---------|-----|
 | B5 | `market_data/instrument_search.py` | A lookup can make ~50 sequential requests; no result cache. | Cache results in the DB, build `Asset` from quote data. |
-| B9 | `services/portfolio_service.py` | A missing price or FX series hides the whole dashboard. | Return partial data with warnings. |
 
 ## C. UI
 

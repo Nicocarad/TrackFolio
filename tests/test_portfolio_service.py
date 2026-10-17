@@ -211,3 +211,20 @@ def test_dashboard_non_eur_asset_and_missing_fx(service: PortfolioService) -> No
     _, holdings, _, warnings = service.dashboard_data()
     assert warnings == []
     assert holdings.loc["US1", "currency"] == "USD"
+
+
+def test_dashboard_is_partial_when_one_ticker_has_no_price(service: PortfolioService) -> None:
+    service.save_transaction(_buy("AAA"))
+    service.save_transaction(_buy("BBB"))
+    prices_repo.save_prices(
+        service.session,
+        "AAA",
+        FakeProvider().get_history("AAA", date.today() - timedelta(5), date.today()),
+    )
+    service.session.commit()
+
+    history, holdings, _, warnings = service.dashboard_data()
+
+    assert not history.empty
+    assert list(holdings.index) == ["AAA"]
+    assert any("BBB" in item for item in warnings)
