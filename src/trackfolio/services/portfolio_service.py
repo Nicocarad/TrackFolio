@@ -9,6 +9,7 @@ from sqlmodel import Session
 from trackfolio.core.holdings import build_holdings
 from trackfolio.core.metrics import PortfolioMetrics, calculate_metrics
 from trackfolio.core.positions import calculate_positions, validate_transaction
+from trackfolio.core.returns import twr_pct, xirr_pct
 from trackfolio.core.timeseries import build_portfolio_timeseries
 from trackfolio.market_data.provider import PriceProvider
 from trackfolio.models import Asset, Transaction
@@ -171,5 +172,10 @@ class PortfolioService:
         asset_info = {t: (a.name, a.currency.upper()) for t, a in asset_map.items() if a}
         holdings = build_holdings(calculate_positions(tx), price_frame, fx, asset_info)
         latest = history.iloc[-1]
-        metrics = calculate_metrics(float(latest["value"]), float(latest["invested_capital"]))
+        metrics = calculate_metrics(
+            float(latest["value"]),
+            float(latest["invested_capital"]),
+            twr_pct(history),
+            xirr_pct(history),
+        )
         return history, holdings, metrics, warnings

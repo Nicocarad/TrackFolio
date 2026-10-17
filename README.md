@@ -65,7 +65,8 @@ FX series are stored in `price` under their Yahoo ticker.
 - **Realized P/L (SELL):** `q·(p − pmc) − fees`. **Unrealized:** `qty·(price − pmc)`.
 - **Value(t):** `Σ qty_i(t) · price_i(t) · fx_i(t)` on business days, prices forward-filled.
 - **Net invested capital:** cumulative BUY `(amount + fees)` minus SELL `(amount − fees)`, in EUR.
-- **KPIs:** P/L = value − invested capital; return % = P/L / invested capital.
+- **KPIs:** P/L = value − invested capital; return % = P/L / invested capital (unreliable once invested capital is ≤ 0 after a profitable exit).
+- **TWR:** chain-linked daily returns `(V_t − flow_t) / V_{t−1} − 1`, flows at end of day. **XIRR:** annualized rate over the dated flows plus the final value (bisection, 365-day year). Period returns (YTD/1Y/3Y) are computed in `core/returns.py`.
 
 </details>
 

@@ -28,6 +28,11 @@ else:
     second.metric("Capitale investito", f"€ {metrics.invested_capital:,.2f}")
     third.metric("Profitto / perdita", f"€ {metrics.profit_loss:,.2f}")
     fourth.metric("Rendimento", f"{metrics.return_pct:,.2f}%")
+    fifth, sixth, _, _ = st.columns(4)
+    if metrics.twr_pct is not None:
+        fifth.metric("Rendimento TWR", f"{metrics.twr_pct:,.2f}%")
+    if metrics.xirr_pct is not None:
+        sixth.metric("XIRR annualizzato", f"{metrics.xirr_pct:,.2f}%")
 
     chart_col, allocation_col = st.columns([2, 1])
     with chart_col:

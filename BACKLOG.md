@@ -9,7 +9,6 @@ Product roadmap: [README.md](README.md#roadmap).
 | ID | File | Problem | Fix |
 |----|------|---------|-----|
 | A5 | `services/portfolio_service.py` | Deleting a BUY is not validated by replaying the ticker history (`validate_transaction` covers add/edit only). | Replay the ticker history on delete and require quantity ≥ 0 throughout. |
-| A6 | `core/metrics.py`, `core/timeseries.py` | Invested capital is a net cash flow; after a profitable exit it can be ≤ 0 and return % is wrong. | Use open-position cost basis, or XIRR/TWR (see D). |
 | A12 | `models.py`, `core/` | `Transaction.currency` duplicates `Asset.currency` and allows mixed currencies per ticker. | Drop the field and derive the currency from the asset; add a dedicated settlement-currency field only if ever needed. |
 
 ## B. Services and data
@@ -40,7 +39,7 @@ Most items are superseded by the FastAPI + HTMX migration (E1); fix only those t
 | ID | Item |
 |----|------|
 | D1 | Dividends and coupons. |
-| D2 | TWR, XIRR (needs `scipy`), CAGR, YTD/1Y/3Y returns; resolves A6. |
+| D2 | Show YTD/1Y/3Y returns (`period_returns_pct` exists in `core/returns.py`, not yet shown in the UI). |
 | D3 | `SPLIT` event type. |
 | D4 | Realized vs. unrealized P/L in the dashboard. |
 
