@@ -10,7 +10,7 @@ from stdnum import isin as stdnum_isin
 from trackfolio.core.holdings import build_holdings
 from trackfolio.core.metrics import PortfolioMetrics, calculate_metrics
 from trackfolio.core.positions import calculate_positions, validate_transaction
-from trackfolio.core.returns import twr_pct, xirr_pct
+from trackfolio.core.returns import period_returns_pct, twr_pct, xirr_pct
 from trackfolio.core.timeseries import build_portfolio_timeseries
 from trackfolio.market_data.instrument_search import search_isin, search_ticker
 from trackfolio.market_data.provider import PriceProvider
@@ -193,5 +193,6 @@ class PortfolioService:
             float(latest["invested_capital"]),
             twr_pct(history),
             xirr_pct(history),
+            period_returns_pct(history),
         )
         return history, holdings, metrics, warnings

@@ -8,15 +8,7 @@ Product roadmap: [README.md](README.md#roadmap).
 
 | ID | File | Problem | Fix |
 |----|------|---------|-----|
-| C4 | `web/templates/_dashboard.html` | Positions table lacks P/L % and EUR P/L. | Add columns in the service. |
 | C8 | `web/`, `services/` | Italian warnings built in the service, English errors shown in the page. | Return structured data from the service; translate in the templates. |
-
-## D. Returns and features
-
-| ID | Item |
-|----|------|
-| D2 | Show YTD/1Y/3Y returns (`period_returns_pct` exists in `core/returns.py`, not yet shown in the UI). |
-| D4 | Realized vs. unrealized P/L in the dashboard. |
 
 ## E. Multi-user hosted service
 

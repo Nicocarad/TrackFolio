@@ -23,3 +23,9 @@ def test_metrics_negative_invested_capital_keeps_profit_loss() -> None:
     # return_pct is not meaningful here (backlog A6); only the absolute P/L is asserted.
     metrics = calculate_metrics(50, -30)
     assert metrics.profit_loss == 80
+
+
+def test_period_returns_are_carried_on_the_metrics() -> None:
+    metrics = calculate_metrics(110, 100, period_returns={"YTD": 10.0, "1Y": None})
+    assert metrics.period_returns == {"YTD": 10.0, "1Y": None}
+    assert calculate_metrics(0, 0).period_returns == {}

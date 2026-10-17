@@ -1,6 +1,6 @@
 """Portfolio summary metrics."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -13,6 +13,7 @@ class PortfolioMetrics:
     return_pct: float
     twr_pct: float | None = None
     xirr_pct: float | None = None
+    period_returns: dict[str, float | None] = field(default_factory=dict)
 
 
 def calculate_metrics(
@@ -20,6 +21,7 @@ def calculate_metrics(
     invested_capital: float,
     twr_pct: float | None = None,
     xirr_pct: float | None = None,
+    period_returns: dict[str, float | None] | None = None,
 ) -> PortfolioMetrics:
     """Calculate absolute and percentage return.
 
@@ -29,5 +31,11 @@ def calculate_metrics(
     profit_loss = total_value - invested_capital
     return_pct = profit_loss / invested_capital * 100 if invested_capital else 0.0
     return PortfolioMetrics(
-        total_value, invested_capital, profit_loss, return_pct, twr_pct, xirr_pct
+        total_value,
+        invested_capital,
+        profit_loss,
+        return_pct,
+        twr_pct,
+        xirr_pct,
+        period_returns or {},
     )

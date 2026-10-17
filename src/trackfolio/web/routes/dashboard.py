@@ -29,6 +29,15 @@ def _context(service: PortfolioService, notice: str | None = None) -> dict[str, 
                 "values": open_positions["value_eur"].round(2).tolist(),
             }
     rows = holdings.reset_index().to_dict("records") if not holdings.empty else []
+    totals = (
+        {
+            "unrealized": float(holdings["profit_loss_eur"].sum()),
+            "realized": float(holdings["realized_pnl_eur"].sum()),
+            "dividends": float(holdings["dividends_eur"].sum()),
+        }
+        if not holdings.empty
+        else None
+    )
     return {
         "metrics": metrics,
         "warnings": warnings,
@@ -36,6 +45,7 @@ def _context(service: PortfolioService, notice: str | None = None) -> dict[str, 
         "value_chart": value_chart,
         "allocation_chart": allocation_chart,
         "holdings": rows,
+        "totals": totals,
         "notice": notice,
         "last_price_date": service.last_price_date(),
     }

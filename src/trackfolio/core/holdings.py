@@ -11,7 +11,11 @@ def build_holdings(
     fx: pd.DataFrame,
     asset_info: Mapping[str, tuple[str, str]],
 ) -> pd.DataFrame:
-    """Value open positions at the latest price; ``asset_info`` maps ticker to (name, currency)."""
+    """Value positions at the latest price; ``asset_info`` maps ticker to (name, currency).
+
+    EUR columns use the latest FX rate for every amount, including realized P/L and dividends
+    earned earlier at different rates, so they are approximations of the historical EUR amounts.
+    """
     rows = []
     for ticker, position in positions.iterrows():
         name, currency = asset_info.get(str(ticker), (str(ticker), "EUR"))
@@ -20,6 +24,7 @@ def build_holdings(
         quantity = float(position["quantity"])
         average_cost = float(position["average_cost"])
         value = quantity * price
+        profit_loss = quantity * (price - average_cost)
         rows.append(
             {
                 "ticker": ticker,
@@ -30,9 +35,13 @@ def build_holdings(
                 "price": price,
                 "value": value,
                 "value_eur": value * rate,
-                "profit_loss": quantity * (price - average_cost),
+                "profit_loss": profit_loss,
+                "profit_loss_pct": (price / average_cost - 1) * 100 if average_cost else None,
+                "profit_loss_eur": profit_loss * rate,
                 "realized_pnl": float(position["realized_pnl"]),
+                "realized_pnl_eur": float(position["realized_pnl"]) * rate,
                 "dividends": float(position["dividends"]),
+                "dividends_eur": float(position["dividends"]) * rate,
             }
         )
     return pd.DataFrame(rows).set_index("ticker")

@@ -26,7 +26,7 @@ Checks: `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`, 
 - ISIN lookup (format and check digit validated with `python-stdnum`) via OpenFIGI, with Yahoo Finance search as fallback. An ISIN identifies the instrument, not the listing, so you choose the exchange and ticker. OpenFIGI requests retry on 429/5xx (honoring `Retry-After`); a persistent 429 is reported instead of falling back to Yahoo. Set `OPENFIGI_API_KEY` for higher rate limits. Yahoo requests time out after 10 s; instrument metadata is cached in memory for the life of the process and resolved in parallel.
 - Daily closing prices from Yahoo Finance, cached in SQLite. If the source is unreachable the cache is used and the missing tickers are reported.
 - Historical FX to EUR (`EUR{CUR}=X`) for prices and invested capital.
-- Positions with average cost, price and unrealized P/L in the instrument currency; portfolio KPIs in EUR.
+- Positions with average cost, price, unrealized P/L (amount, % and EUR), realized P/L and net dividends; portfolio KPIs in EUR with unrealized, realized and dividend totals, and YTD/1Y/3Y time-weighted returns when the history is long enough.
 
 ## Architecture
 
@@ -68,6 +68,7 @@ FX series are stored in `price` under their Yahoo ticker.
 - **Value(t):** `Σ qty_i(t) · price_i(t) · fx_i(t)` on business days, prices forward-filled.
 - **Net invested capital:** cumulative BUY `(amount + fees)` minus SELL and DIVIDEND `(amount − fees)`, in EUR: a dividend counts as cash returned, so it lowers invested capital and raises TWR/XIRR.
 - **Split:** quantity × ratio, average cost ÷ ratio, total cost and realized P/L unchanged. Provider closes are split-adjusted, so history values pre-split shares multiplied by the ratios of later splits.
+- **EUR amounts per position:** converted at the latest FX rate, including realized P/L and dividends earned earlier, so the EUR totals of realized P/L and dividends are approximations; value, invested capital and returns use historical rates.
 - **Dividend:** leaves quantity and average cost unchanged; net `qty·price − fees` accumulates in the per-position `dividends` column. Same-day order: SPLIT, BUY, DIVIDEND, SELL.
 - **KPIs:** P/L = value − invested capital; return % = P/L / invested capital (unreliable once invested capital is ≤ 0 after a profitable exit).
 - **TWR:** chain-linked daily returns `(V_t − flow_t) / V_{t−1} − 1`, flows at end of day. **XIRR:** annualized rate over the dated flows plus the final value (bisection, 365-day year). Period returns (YTD/1Y/3Y) are computed in `core/returns.py`.

@@ -133,3 +133,23 @@ def test_failed_save_keeps_the_isin_in_the_form(client: TestClient) -> None:
     )
     assert "negative" in response.text
     assert 'name="isin" value="IE00BK5BQT80"' in response.text
+
+
+def test_dashboard_shows_realized_dividends_and_per_position_columns(client: TestClient) -> None:
+    client.post("/transactions", data=_form(quantity="10", price="10", fees="0"))
+    client.post(
+        "/transactions",
+        data=_form(
+            type="DIVIDEND", quantity="10", price="0.5", fees="1", date=date.today().isoformat()
+        ),
+    )
+    client.post("/refresh")
+    page = client.get("/").text
+    for label in (
+        "P/L non realizzato (EUR)",
+        "P/L realizzato (EUR)",
+        "Dividendi netti (EUR)",
+        "P/L %",
+    ):
+        assert label in page
+    assert "€ 4.00" in page.replace("\xa0", " ")  # net dividend: 10 * 0.5 - 1

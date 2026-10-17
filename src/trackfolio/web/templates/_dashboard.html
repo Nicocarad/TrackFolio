@@ -20,6 +20,18 @@
     {% if metrics.twr_pct is not none %}<div><span>Rendimento TWR</span><b>{{ metrics.twr_pct | pct }}</b></div>{% endif %}
     {% if metrics.xirr_pct is not none %}<div><span>XIRR annualizzato</span><b>{{ metrics.xirr_pct | pct }}</b></div>{% endif %}
   </section>
+  {% if totals or metrics.period_returns %}
+  <section class="cards">
+    {% if totals %}
+      <div><span>P/L non realizzato (EUR)</span><b>{{ totals.unrealized | eur }}</b></div>
+      <div><span>P/L realizzato (EUR)</span><b>{{ totals.realized | eur }}</b></div>
+      <div><span>Dividendi netti (EUR)</span><b>{{ totals.dividends | eur }}</b></div>
+    {% endif %}
+    {% for label, value in metrics.period_returns.items() if value is not none %}
+      <div><span>TWR {{ label }}</span><b>{{ value | pct }}</b></div>
+    {% endfor %}
+  </section>
+  {% endif %}
 
   <section class="charts">
     <div><h2>Valore del portafoglio</h2><div id="value-chart"></div></div>
@@ -50,7 +62,7 @@
       <thead><tr>
         <th>Titolo</th><th>Valuta</th><th class="n">Quantità</th><th class="n">PMC</th>
         <th class="n">Prezzo</th><th class="n">Valore</th><th class="n">Valore (EUR)</th>
-        <th class="n">P/L</th><th class="n">P/L realizzato</th><th class="n">Dividendi netti</th>
+        <th class="n">P/L</th><th class="n">P/L %</th><th class="n">P/L (EUR)</th><th class="n">P/L realizzato</th><th class="n">Dividendi netti</th>
       </tr></thead>
       <tbody>
       {% for row in holdings %}
@@ -58,7 +70,7 @@
           <td title="{{ row.name }}">{{ row.ticker }}</td><td>{{ row.currency }}</td>
           <td class="n">{{ row.quantity | num(4) }}</td><td class="n">{{ row.average_cost | num(4) }}</td>
           <td class="n">{{ row.price | num(4) }}</td><td class="n">{{ row.value | num }}</td>
-          <td class="n">{{ row.value_eur | num }}</td><td class="n">{{ row.profit_loss | num }}</td>
+          <td class="n">{{ row.value_eur | num }}</td><td class="n">{{ row.profit_loss | num }}</td><td class="n">{{ row.profit_loss_pct | pct }}</td><td class="n">{{ row.profit_loss_eur | num }}</td>
           <td class="n">{{ row.realized_pnl | num }}</td><td class="n">{{ row.dividends | num }}</td>
         </tr>
       {% endfor %}
