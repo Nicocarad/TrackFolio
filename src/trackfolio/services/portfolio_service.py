@@ -1,9 +1,7 @@
 """Portfolio use cases coordinating persistence, market data, and pure calculations."""
 
 import logging
-from dataclasses import dataclass
-from datetime import date, timedelta
-from enum import StrEnum
+from datetime import date
 
 import pandas as pd
 from sqlmodel import Session
@@ -19,32 +17,9 @@ from trackfolio.market_data.instrument_search import search_isin, search_ticker
 from trackfolio.market_data.provider import PriceProvider
 from trackfolio.models import Asset, Transaction
 from trackfolio.repositories import assets, prices, transactions
+from trackfolio.services.warnings import DataWarning, WarningCode
 
 logger = logging.getLogger(__name__)
-
-
-class WarningCode(StrEnum):
-    """Kinds of data problems the service reports without hiding the rest of the result."""
-
-    NO_PRICE = "no_price"  # subject: ticker
-    NO_FX = "no_fx"  # subject: currency
-    EXCLUDED = "excluded"  # subject: comma-separated tickers left out of the dashboard
-    REFRESH_FAILED = "refresh_failed"  # subject: ticker, detail: error, cached_until if any
-    DATA_ERROR = "data_error"  # detail: technical message
-
-
-@dataclass(frozen=True)
-class DataWarning:
-    """A structured warning; presentation and language are up to the caller."""
-
-    code: WarningCode
-    subject: str = ""
-    detail: str = ""
-    cached_until: date | None = None
-    error: DomainError | None = None  # set for DATA_ERROR when the cause is a domain error
-
-
-REFRESH_OVERLAP_DAYS = 5
 
 
 class PortfolioService:
@@ -123,40 +98,6 @@ class PortfolioService:
             item.ticker for item in transactions.list_transactions(self.session, self.user_id)
         }
         return {ticker: stored.get(ticker) for ticker in tickers}
-
-    def refresh_prices(self) -> tuple[int, list[DataWarning]]:
-        """Refresh cached asset and FX prices, retaining cache on provider failures."""
-        all_transactions = transactions.list_transactions(self.session, self.user_id)
-        if not all_transactions:
-            return 0, []
-        tickers = sorted({item.ticker for item in all_transactions})
-        asset_map = self._assets_by_ticker()
-        currencies = {item.currency.upper() for item in asset_map.values() if item is not None}
-        fx_tickers = [f"EUR{currency}=X" for currency in currencies if currency != "EUR"]
-        requested = tickers + fx_tickers
-        first_trade = min(item.date for item in all_transactions)
-        end = date.today() + timedelta(days=1)
-        warnings: list[DataWarning] = []
-        saved = 0
-        for ticker in requested:
-            try:
-                cached = prices.get_prices(self.session, ticker)
-                start = first_trade
-                if not cached.empty and cached.index.min().date() <= first_trade + timedelta(
-                    days=7
-                ):
-                    start = cached.index.max().date() - timedelta(days=REFRESH_OVERLAP_DAYS)
-                history = self.provider.get_history(ticker, start, end)
-                prices.save_prices(self.session, ticker, history)
-                self.session.commit()
-                saved += len(history.dropna())
-            except Exception as error:
-                self.session.rollback()
-                logger.warning("Price refresh failed for %s: %s", ticker, error)
-                cached = prices.get_prices(self.session, ticker)
-                until = None if cached.empty else cached.index.max().date()
-                warnings.append(DataWarning(WarningCode.REFRESH_FAILED, ticker, str(error), until))
-        return saved, warnings
 
     def dashboard_data(
         self,

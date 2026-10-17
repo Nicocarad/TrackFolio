@@ -1,17 +1,20 @@
 from collections.abc import Generator
 from datetime import date, timedelta
 
-import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
-from helpers import FakeProvider, memory_engine, open_client
-
-from trackfolio.web.deps import get_provider
+from helpers import memory_engine, open_client, refresh
+from sqlalchemy import Engine
 
 
 @pytest.fixture
-def client() -> Generator[TestClient]:
-    yield from open_client(memory_engine(), "a@example.com")
+def engine() -> Engine:
+    return memory_engine()
+
+
+@pytest.fixture
+def client(engine: Engine) -> Generator[TestClient]:
+    yield from open_client(engine, "a@example.com")
 
 
 def _form(**overrides: str) -> dict[str, str]:
@@ -36,13 +39,12 @@ def test_empty_dashboard_and_static_assets(client: TestClient) -> None:
     assert plotly.status_code == 200 and "javascript" in plotly.headers["content-type"]
 
 
-def test_add_transaction_then_refresh_shows_dashboard(client: TestClient) -> None:
+def test_add_transaction_then_refresh_shows_dashboard(client: TestClient, engine: Engine) -> None:
     saved = client.post("/transactions", data=_form())
     assert "Transazione salvata." in saved.text
     assert "ABC" in saved.text
 
-    refreshed = client.post("/refresh")
-    assert "Aggiornati" in refreshed.text
+    refresh(engine)
     dashboard = client.get("/")
     assert "Valore totale" in dashboard.text
     assert "€ 21.00" in dashboard.text.replace("\xa0", " ")  # invested: 2 * 10 + 1 fees
@@ -105,7 +107,9 @@ def test_failed_save_keeps_the_isin_in_the_form(client: TestClient) -> None:
     assert 'name="isin" value="IE00BK5BQT80"' in response.text
 
 
-def test_dashboard_shows_realized_dividends_and_per_position_columns(client: TestClient) -> None:
+def test_dashboard_shows_realized_dividends_and_per_position_columns(
+    client: TestClient, engine: Engine
+) -> None:
     client.post("/transactions", data=_form(quantity="10", price="10", fees="0"))
     client.post(
         "/transactions",
@@ -113,7 +117,7 @@ def test_dashboard_shows_realized_dividends_and_per_position_columns(client: Tes
             type="DIVIDEND", quantity="10", price="0.5", fees="1", date=date.today().isoformat()
         ),
     )
-    client.post("/refresh")
+    refresh(engine)
     page = client.get("/").text
     for label in (
         "P/L non realizzato (EUR)",
@@ -125,12 +129,10 @@ def test_dashboard_shows_realized_dividends_and_per_position_columns(client: Tes
     assert "€ 4.00" in page.replace("\xa0", " ")  # net dividend: 10 * 0.5 - 1
 
 
-def test_refresh_failure_is_reported_in_italian(client: TestClient) -> None:
-    class Broken(FakeProvider):
-        def get_history(self, ticker: str, start: date, end: date) -> pd.Series:
-            raise RuntimeError("down")
-
+def test_dashboard_has_no_refresh_button_and_explains_missing_prices(client: TestClient) -> None:
     client.post("/transactions", data=_form())
-    client.app.dependency_overrides[get_provider] = lambda: Broken()  # type: ignore[attr-defined]
-    page = client.post("/refresh").text
-    assert "ABC: aggiornamento fallito e cache assente (down)" in page
+    page = client.get("/").text
+    assert "Aggiorna prezzi" not in page and 'hx-post="/refresh"' not in page
+    assert "Nessun prezzo in cache per ABC" in page
+    assert "automaticamente" in page
+    assert client.post("/refresh").status_code == 404

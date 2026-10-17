@@ -3,7 +3,7 @@
 from typing import assert_never
 
 from trackfolio.errors import DomainError, ErrorCode
-from trackfolio.services.portfolio_service import DataWarning, WarningCode
+from trackfolio.services.warnings import DataWarning, WarningCode
 
 ERRORS_IT: dict[ErrorCode, str] = {
     ErrorCode.INVALID_VALUES: "La transazione contiene valori mancanti o non validi.",

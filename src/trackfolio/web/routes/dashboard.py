@@ -12,7 +12,7 @@ from trackfolio.web.routes.templating import templates
 router = APIRouter(dependencies=[Depends(require_csrf)])
 
 
-def _context(service: PortfolioService, notice: str | None = None) -> dict[str, Any]:
+def _context(service: PortfolioService) -> dict[str, Any]:
     history, holdings, metrics, warnings = service.dashboard_data()
     value_chart: dict[str, Any] | None = None
     allocation_chart: dict[str, Any] | None = None
@@ -46,7 +46,6 @@ def _context(service: PortfolioService, notice: str | None = None) -> dict[str, 
         "allocation_chart": allocation_chart,
         "holdings": rows,
         "totals": totals,
-        "notice": notice,
         "last_price_date": service.last_price_date(),
     }
 
@@ -57,13 +56,3 @@ def dashboard(request: Request, service: PortfolioService = Depends(get_service)
     return templates.TemplateResponse(
         request, "dashboard.html", {"page": "dashboard", **_context(service)}
     )
-
-
-@router.post("/refresh", response_class=HTMLResponse)
-def refresh(request: Request, service: PortfolioService = Depends(get_service)) -> Any:
-    """Refresh cached prices and re-render the dashboard body."""
-    count, errors = service.refresh_prices()
-    notice = None if errors else f"Aggiornati {count} prezzi giornalieri."
-    context = _context(service, notice)
-    context["warnings"] = [*errors, *context["warnings"]]
-    return templates.TemplateResponse(request, "_dashboard.html", context)

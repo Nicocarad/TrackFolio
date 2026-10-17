@@ -16,6 +16,11 @@ def list_transactions(session: Session, user_id: int) -> list[Transaction]:
     return list(session.exec(statement).all())
 
 
+def list_all_transactions(session: Session) -> list[Transaction]:
+    """Return every user's transactions (shared jobs only, never for request handling)."""
+    return list(session.exec(select(Transaction).order_by(col(Transaction.id))).all())
+
+
 def get_transaction(session: Session, user_id: int, transaction_id: int) -> Transaction:
     """Return one of the user's transactions; other users' rows look like missing ones."""
     transaction = session.get(Transaction, transaction_id)

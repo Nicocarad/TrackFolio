@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
-from helpers import PASSWORD, memory_engine, open_client
+from helpers import PASSWORD, memory_engine, open_client, refresh
 from sqlalchemy import Engine
 from sqlmodel import Session, select
 
@@ -43,7 +43,7 @@ def test_anonymous_requests_are_redirected_to_the_login_page(anonymous: TestClie
     assert (page.status_code, page.headers["location"]) == (303, "/login")
     htmx = anonymous.get("/", headers={"HX-Request": "true"}, follow_redirects=False)
     assert (htmx.status_code, htmx.headers["HX-Redirect"]) == (401, "/login")
-    assert anonymous.post("/refresh", follow_redirects=False).status_code == 303
+    assert anonymous.post("/transactions", follow_redirects=False).status_code == 303
     assert anonymous.get("/login").status_code == 200
     assert anonymous.get("/static/style.css").status_code == 200
 
@@ -125,7 +125,9 @@ def test_password_reset_ends_existing_sessions(alice: TestClient, engine: Engine
     assert alice.get("/", follow_redirects=False).status_code == 303
 
 
-def test_users_are_isolated_in_every_route(alice: TestClient, bob: TestClient) -> None:
+def test_users_are_isolated_in_every_route(
+    alice: TestClient, bob: TestClient, engine: Engine
+) -> None:
     alice.post("/transactions", data=_buy("ABC"))
     bob.post("/transactions", data=_buy("XYZ"))
 
@@ -142,8 +144,7 @@ def test_users_are_isolated_in_every_route(alice: TestClient, bob: TestClient) -
     assert "99" not in alice.get("/transactions").text
     assert "<td>ABC</td>" in alice.get("/transactions").text
 
-    alice.post("/refresh")
-    bob.post("/refresh")
+    refresh(engine)
     assert "ABC" in alice.get("/").text and "XYZ" not in alice.get("/").text
 
 

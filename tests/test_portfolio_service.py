@@ -9,7 +9,9 @@ from sqlmodel import Session, SQLModel, create_engine
 from trackfolio.models import Asset, Transaction, TransactionType, User
 from trackfolio.repositories import assets as assets_repo
 from trackfolio.repositories import prices as prices_repo
-from trackfolio.services.portfolio_service import PortfolioService, WarningCode
+from trackfolio.services.portfolio_service import PortfolioService
+from trackfolio.services.price_refresh import refresh_all_prices
+from trackfolio.services.warnings import WarningCode
 
 
 class FakeProvider:
@@ -82,7 +84,7 @@ def test_service_refreshes_and_builds_dashboard_from_cached_prices(
         )
     )
 
-    count, warnings = service.refresh_prices()
+    count, warnings = refresh_all_prices(service.session, service.provider)
     history, holdings, metrics, dashboard_warnings = service.dashboard_data()
 
     assert count > 0
@@ -131,7 +133,7 @@ def test_edit_and_delete_only_transaction(service: PortfolioService) -> None:
 
 
 def test_refresh_without_transactions(service: PortfolioService) -> None:
-    assert service.refresh_prices() == (0, [])
+    assert refresh_all_prices(service.session, service.provider) == (0, [])
 
 
 def test_refresh_survives_unexpected_provider_error(service: PortfolioService) -> None:
@@ -142,7 +144,7 @@ def test_refresh_survives_unexpected_provider_error(service: PortfolioService) -
             raise KeyError("boom")
 
     service.provider = Broken()
-    count, warnings = service.refresh_prices()
+    count, warnings = refresh_all_prices(service.session, service.provider)
     assert count == 0
     assert len(warnings) == 1
     assert (warnings[0].code, warnings[0].cached_until) == (WarningCode.REFRESH_FAILED, None)
@@ -150,14 +152,14 @@ def test_refresh_survives_unexpected_provider_error(service: PortfolioService) -
 
 def test_refresh_failure_with_cache_keeps_cache(service: PortfolioService) -> None:
     service.save_transaction(_buy())
-    service.refresh_prices()
+    refresh_all_prices(service.session, service.provider)
 
     class Broken(FakeProvider):
         def get_history(self, ticker: str, start: date, end: date) -> pd.Series:
             raise RuntimeError("down")
 
     service.provider = Broken()
-    _, warnings = service.refresh_prices()
+    _, warnings = refresh_all_prices(service.session, service.provider)
     assert warnings[0].code == WarningCode.REFRESH_FAILED
     assert warnings[0].cached_until is not None
     assert not prices_repo.get_prices(service.session, "ABC").empty
@@ -165,7 +167,7 @@ def test_refresh_failure_with_cache_keeps_cache(service: PortfolioService) -> No
 
 def test_refresh_is_incremental_once_cached(service: PortfolioService) -> None:
     service.save_transaction(_buy(days_ago=30))
-    service.refresh_prices()
+    refresh_all_prices(service.session, service.provider)
     starts: list[date] = []
 
     class Spy(FakeProvider):
@@ -174,7 +176,7 @@ def test_refresh_is_incremental_once_cached(service: PortfolioService) -> None:
             return super().get_history(ticker, start, end)
 
     service.provider = Spy()
-    service.refresh_prices()
+    refresh_all_prices(service.session, service.provider)
     assert starts[0] > date.today() - timedelta(days=15)
 
 
@@ -197,7 +199,7 @@ def test_dashboard_non_eur_asset_and_missing_fx(service: PortfolioService) -> No
 
     service.provider = UsdProvider()
     service.save_transaction(_buy("US1"))
-    service.refresh_prices()
+    refresh_all_prices(service.session, service.provider)
     _, _, _, warnings = service.dashboard_data()
     assert [(w.code, w.subject) for w in warnings] == [(WarningCode.NO_FX, "USD")]
 
@@ -208,7 +210,7 @@ def test_dashboard_non_eur_asset_and_missing_fx(service: PortfolioService) -> No
             )
 
     service.provider = WithFx()
-    service.refresh_prices()
+    refresh_all_prices(service.session, service.provider)
     _, holdings, _, warnings = service.dashboard_data()
     assert warnings == []
     assert holdings.loc["US1", "currency"] == "USD"

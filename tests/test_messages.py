@@ -1,6 +1,6 @@
 from datetime import date
 
-from trackfolio.services.portfolio_service import DataWarning, WarningCode
+from trackfolio.services.warnings import DataWarning, WarningCode
 from trackfolio.web.messages import warning_text
 
 

@@ -22,13 +22,16 @@ Accounts are created by an admin from the command line; there is no registration
 | `trackfolio set-password EMAIL` | Reset a password and end the user's sessions |
 | `trackfolio change-email OLD NEW` | Change an email |
 | `trackfolio list-users` | List accounts |
+| `trackfolio refresh-prices` | Refresh the price cache for every ticker held by any user; run it on a timer (see below) |
+
+Prices are never fetched on behalf of a request: run `trackfolio refresh-prices` yourself (or from a timer, e.g. every 15 minutes on weekdays between 09:00 and 22:15 Europe/Rome) after adding the first transactions. It fetches each held ticker once, starting from the last cached date minus 5 days, and exits non-zero only when nothing could be refreshed.
 
 Databases that already contain transactions get a placeholder admin `admin@trackfolio.local` that owns them and cannot log in: run `trackfolio set-password admin@trackfolio.local`, then `trackfolio change-email admin@trackfolio.local you@example.com`.
 
 | Route | Purpose |
 |-------|---------|
 | `/transactions` | Search an instrument by ISIN or ticker, pick a listing, add / edit / delete transactions |
-| `/` | KPIs, positions, allocation, value vs. invested capital; **Aggiorna prezzi** refreshes the price cache |
+| `/` | KPIs, positions, allocation, value vs. invested capital |
 
 Checks: `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy src`.
 

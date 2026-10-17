@@ -12,6 +12,7 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from trackfolio.models import Asset
 from trackfolio.services.auth_service import AuthService
+from trackfolio.services.price_refresh import refresh_all_prices
 from trackfolio.web.app import create_app
 from trackfolio.web.deps import get_db, get_provider
 
@@ -70,3 +71,9 @@ def open_client(engine: Engine, email: str | None = None) -> Generator[TestClien
             assert token, "csrf token missing from the page"
             client.headers["X-CSRF-Token"] = token.group(1)
         yield client
+
+
+def refresh(engine: Engine, provider: object | None = None) -> None:
+    """Run the shared price refresh, as the timer does."""
+    with Session(engine) as session:
+        refresh_all_prices(session, provider or FakeProvider())  # type: ignore[arg-type]

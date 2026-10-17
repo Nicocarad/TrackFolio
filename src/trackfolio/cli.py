@@ -7,8 +7,11 @@ from collections.abc import Callable, Sequence
 
 from trackfolio.db import get_session, init_db
 from trackfolio.errors import DomainError
+from trackfolio.market_data.provider import PriceProvider
+from trackfolio.market_data.yfinance_provider import YFinanceProvider
 from trackfolio.repositories import users
 from trackfolio.services.auth_service import UNUSABLE_HASH, AuthService
+from trackfolio.services.price_refresh import refresh_all_prices
 
 
 def _prompt_password() -> str:
@@ -43,13 +46,33 @@ def build_parser() -> argparse.ArgumentParser:
     rename.add_argument("new")
 
     commands.add_parser("list-users", help="list accounts")
+    commands.add_parser(
+        "refresh-prices", help="refresh cached prices for every held ticker (run on a timer)"
+    )
     return parser
 
 
-def main(argv: Sequence[str] | None = None, prompt: Callable[[], str] = _prompt_password) -> int:
+def _refresh_prices(provider: PriceProvider | None) -> int:
+    with get_session() as session:
+        saved, warnings = refresh_all_prices(session, provider or YFinanceProvider())
+    print(f"Saved {saved} daily prices")
+    for warning in warnings:
+        until = f", cache until {warning.cached_until}" if warning.cached_until else ""
+        print(f"WARNING {warning.subject}: {warning.detail}{until}", file=sys.stderr)
+    # Fail the timer run only when nothing could be refreshed, not on a single bad ticker.
+    return 1 if warnings and saved == 0 else 0
+
+
+def main(
+    argv: Sequence[str] | None = None,
+    prompt: Callable[[], str] = _prompt_password,
+    provider: PriceProvider | None = None,
+) -> int:
     """Run one command; returns the process exit code."""
     args = build_parser().parse_args(argv)
     init_db()
+    if args.command == "refresh-prices":
+        return _refresh_prices(provider)
     try:
         with get_session() as session:
             auth = AuthService(session)

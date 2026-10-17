@@ -1,13 +1,11 @@
 <div class="toolbar">
   <span class="muted">Ultimo prezzo in cache: {{ last_price_date or "mai" }} · dati salvati solo in locale</span>
-  <button hx-post="/refresh" hx-target="#dashboard" hx-swap="innerHTML" hx-disabled-elt="this">Aggiorna prezzi</button>
 </div>
-{% if notice %}<p class="msg ok" role="status">{{ notice }}</p>{% endif %}
 {% for w in warnings %}<p class="msg warn" role="alert">{{ w | warning }}</p>{% endfor %}
 
 {% if empty %}
   {% if warnings %}
-    <p class="muted">Premi «Aggiorna prezzi» per scaricare i prezzi mancanti.</p>
+    <p class="muted">I prezzi mancanti vengono scaricati automaticamente: riprova tra qualche minuto.</p>
   {% else %}
     <p class="muted">Aggiungi una <a href="/transactions">transazione</a> per iniziare a monitorare il portafoglio.</p>
   {% endif %}
