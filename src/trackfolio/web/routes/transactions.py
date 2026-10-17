@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse
 from trackfolio.models import Transaction, TransactionType
 from trackfolio.services.portfolio_service import PortfolioService
 from trackfolio.web.deps import get_service
+from trackfolio.web.messages import error_text
 from trackfolio.web.routes.templating import templates
 
 logger = logging.getLogger(__name__)
@@ -72,7 +73,7 @@ def search(request: Request, q: str = "", service: PortfolioService = Depends(ge
             candidates = service.search_instrument(q)
             error = None if candidates else "Nessun titolo trovato."
         except (ValueError, RuntimeError) as exc:
-            error = str(exc)
+            error = error_text(exc)
     return templates.TemplateResponse(
         request, "_candidates.html", {"candidates": candidates, "error": error}
     )
@@ -133,7 +134,7 @@ def save(
     try:
         service.save_transaction(transaction, isin or None)
     except (ValueError, RuntimeError) as exc:
-        return _area(request, service, current=transaction, prefill=prefill, error=str(exc))
+        return _area(request, service, current=transaction, prefill=prefill, error=error_text(exc))
     except Exception:
         logger.exception("Unexpected error while saving a transaction")
         return _area(
@@ -150,5 +151,5 @@ def delete(
     try:
         service.delete_transaction(transaction_id)
     except ValueError as exc:
-        return _area(request, service, error=str(exc))
+        return _area(request, service, error=error_text(exc))
     return _area(request, service, message="Transazione eliminata.")

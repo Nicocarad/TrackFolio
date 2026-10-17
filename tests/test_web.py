@@ -81,7 +81,7 @@ def test_add_transaction_then_refresh_shows_dashboard(client: TestClient) -> Non
 def test_invalid_transaction_returns_the_form_with_an_error(client: TestClient) -> None:
     response = client.post("/transactions", data=_form(type="SELL", quantity="5"))
     assert response.status_code == 200
-    assert "negative" in response.text
+    assert "diventerebbero negative" in response.text
     assert client.get("/transactions").text.count("<td>ABC</td>") == 0
 
 
@@ -96,7 +96,7 @@ def test_edit_and_delete(client: TestClient) -> None:
     assert "Transazione eliminata." in deleted.text
     assert "Nessuna transazione." in deleted.text
     missing = client.post("/transactions/99/delete")
-    assert "does not exist" in missing.text
+    assert "non esiste" in missing.text
 
 
 def test_search_detects_isin_and_reports_empty_results(client: TestClient) -> None:
@@ -131,7 +131,7 @@ def test_failed_save_keeps_the_isin_in_the_form(client: TestClient) -> None:
     response = client.post(
         "/transactions", data=_form(type="SELL", quantity="5", isin="IE00BK5BQT80")
     )
-    assert "negative" in response.text
+    assert "diventerebbero negative" in response.text
     assert 'name="isin" value="IE00BK5BQT80"' in response.text
 
 

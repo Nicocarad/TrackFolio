@@ -1,8 +1,47 @@
-"""Italian texts for the structured warnings returned by the service."""
+"""Italian texts for the structured warnings and domain errors returned by the service."""
 
 from typing import assert_never
 
+from trackfolio.errors import DomainError, ErrorCode
 from trackfolio.services.portfolio_service import DataWarning, WarningCode
+
+ERRORS_IT: dict[ErrorCode, str] = {
+    ErrorCode.INVALID_VALUES: "La transazione contiene valori mancanti o non validi.",
+    ErrorCode.FUTURE_DATE: "La data non può essere nel futuro.",
+    ErrorCode.TICKER_REQUIRED: "Il ticker è obbligatorio.",
+    ErrorCode.INVALID_TYPE: "Tipo di transazione non valido (ammessi: {allowed}).",
+    ErrorCode.QUANTITY_NOT_POSITIVE: "La quantità deve essere maggiore di zero.",
+    ErrorCode.NEGATIVE_AMOUNT: "Prezzo e commissioni non possono essere negativi.",
+    ErrorCode.SPLIT_HAS_PRICE: "Uno split non ha prezzo né commissioni: la quantità è il rapporto.",
+    ErrorCode.OVERSELL: (
+        "Impossibile vendere {quantity:g} di {ticker} il {date}: "
+        "le quote in portafoglio diventerebbero negative ({holdings:g})."
+    ),
+    ErrorCode.SELL_EXCEEDS: "La vendita di {ticker} il {date} supera le quote detenute.",
+    ErrorCode.DIVIDEND_EXCEEDS: (
+        "Il dividendo su {quantity:g} titoli {ticker} il {date} supera le quote "
+        "detenute ({holdings:g})."
+    ),
+    ErrorCode.TRANSACTION_NOT_FOUND: "La transazione {transaction_id} non esiste.",
+    ErrorCode.MISSING_COLUMNS: "Colonne mancanti nelle transazioni: {columns}.",
+    ErrorCode.UNKNOWN_TYPE: "Tipo di transazione sconosciuto: {types}.",
+    ErrorCode.NO_PRICES: "Serve almeno un prezzo.",
+    ErrorCode.MISSING_PRICE_SERIES: "Prezzi mancanti per: {tickers}.",
+    ErrorCode.MISSING_CURRENCY: "Valuta mancante per: {tickers}.",
+    ErrorCode.MISSING_FX: "Tassi di cambio mancanti per: {currencies}.",
+    ErrorCode.UNPRICED_HOLDINGS: "Posizioni senza prezzo prima della prima quotazione: {tickers}.",
+    ErrorCode.INVALID_ISIN: "ISIN non valido (formato o cifra di controllo).",
+    ErrorCode.EMPTY_QUERY: "Inserisci un ISIN, un ticker o un nome.",
+    ErrorCode.UNKNOWN_TICKER: "Yahoo Finance non riconosce il ticker {ticker}.",
+    ErrorCode.NO_HISTORY: "Nessuna storia dei prezzi disponibile per {ticker}.",
+}
+
+
+def error_text(error: Exception) -> str:
+    """Italian text for a domain error; other errors (providers) keep their own message."""
+    if isinstance(error, DomainError):
+        return ERRORS_IT[error.code].format(**error.params)
+    return str(error)
 
 
 def warning_text(warning: DataWarning) -> str:
@@ -24,6 +63,6 @@ def warning_text(warning: DataWarning) -> str:
                 f"{warning.cached_until} ({warning.detail})"
             )
         case WarningCode.DATA_ERROR:
-            return warning.detail
+            return error_text(warning.error) if warning.error else warning.detail
         case _ as unreachable:
             assert_never(unreachable)

@@ -2,6 +2,7 @@
 
 from sqlmodel import Session, col, select
 
+from trackfolio.errors import DomainError, ErrorCode
 from trackfolio.models import Transaction
 
 
@@ -25,5 +26,5 @@ def delete_transaction(session: Session, transaction_id: int) -> None:
     """Delete a transaction by its identifier."""
     transaction = session.get(Transaction, transaction_id)
     if transaction is None:
-        raise ValueError(f"Transaction {transaction_id} does not exist")
+        raise DomainError(ErrorCode.TRANSACTION_NOT_FOUND, transaction_id=transaction_id)
     session.delete(transaction)

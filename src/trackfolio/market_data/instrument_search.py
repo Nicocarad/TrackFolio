@@ -9,6 +9,7 @@ from typing import Any
 
 from stdnum import isin
 
+from trackfolio.errors import DomainError, ErrorCode
 from trackfolio.market_data.provider import PriceProvider
 from trackfolio.models import Asset
 
@@ -87,7 +88,7 @@ def search_isin(isin_value: str, provider: PriceProvider) -> list[Asset]:
     """
     normalized = isin_value.strip().upper()
     if not isin.is_valid(normalized):
-        raise ValueError("ISIN is invalid (format or check digit)")
+        raise DomainError(ErrorCode.INVALID_ISIN)
 
     try:
         payload = _post_openfigi(normalized)
@@ -134,5 +135,5 @@ def search_ticker(query: str, provider: PriceProvider) -> list[Asset]:
     """Search by name or ticker using Yahoo Finance."""
     normalized = query.strip()
     if not normalized:
-        raise ValueError("Enter an ISIN or ticker")
+        raise DomainError(ErrorCode.EMPTY_QUERY)
     return provider.search_tickers(normalized)

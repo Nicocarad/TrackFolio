@@ -4,12 +4,6 @@ Open improvements from a static code review. Nothing here was run or reproduced;
 
 Product roadmap: [README.md](README.md#roadmap).
 
-## C. UI
-
-| ID | File | Problem | Fix |
-|----|------|---------|-----|
-| C8 | `web/routes/transactions.py` | Validation errors raised by `core/` and `services/` (`ValueError`) are English and shown as is in the form. | Raise typed errors with codes and translate them in `web/messages.py`. |
-
 ## E. Multi-user hosted service
 
 Design in [IMPROVEMENTS.md](IMPROVEMENTS.md#2-hosted-multi-user-service). Order matters: E4 before E5.

@@ -14,6 +14,7 @@ from trackfolio.core.metrics import PortfolioMetrics, calculate_metrics
 from trackfolio.core.positions import calculate_positions, validate_transaction
 from trackfolio.core.returns import period_returns_pct, twr_pct, xirr_pct
 from trackfolio.core.timeseries import build_portfolio_timeseries
+from trackfolio.errors import DomainError, ErrorCode
 from trackfolio.market_data.instrument_search import search_isin, search_ticker
 from trackfolio.market_data.provider import PriceProvider
 from trackfolio.models import Asset, Transaction
@@ -40,6 +41,7 @@ class DataWarning:
     subject: str = ""
     detail: str = ""
     cached_until: date | None = None
+    error: DomainError | None = None  # set for DATA_ERROR when the cause is a domain error
 
 
 REFRESH_OVERLAP_DAYS = 5
@@ -90,7 +92,7 @@ class PortfolioService:
         current = transactions.list_transactions(self.session)
         proposed = [item.model_dump() for item in current if item.id != transaction_id]
         if len(proposed) == len(current):
-            raise ValueError(f"Transaction {transaction_id} does not exist")
+            raise DomainError(ErrorCode.TRANSACTION_NOT_FOUND, transaction_id=transaction_id)
         calculate_positions(pd.DataFrame(proposed))
         try:
             transactions.delete_transaction(self.session, transaction_id)
@@ -202,7 +204,10 @@ class PortfolioService:
         try:
             history = build_portfolio_timeseries(tx, price_frame, asset_currencies, fx)
         except ValueError as error:
-            warnings.append(DataWarning(WarningCode.DATA_ERROR, detail=str(error)))
+            domain_error = error if isinstance(error, DomainError) else None
+            warnings.append(
+                DataWarning(WarningCode.DATA_ERROR, detail=str(error), error=domain_error)
+            )
             return pd.DataFrame(), pd.DataFrame(), calculate_metrics(0, 0), warnings
         asset_info = {t: (a.name, a.currency.upper()) for t, a in asset_map.items() if a}
         holdings = build_holdings(calculate_positions(tx), price_frame, fx, asset_info)

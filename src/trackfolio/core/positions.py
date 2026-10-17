@@ -7,6 +7,7 @@ from numbers import Real
 
 import pandas as pd
 
+from trackfolio.errors import DomainError, ErrorCode
 from trackfolio.models import TransactionType
 
 _EPSILON = 1e-9
@@ -27,14 +28,14 @@ def order_transactions(transactions: pd.DataFrame) -> pd.DataFrame:
     required = {"date", "ticker", "type", "quantity", "price", "fees"}
     missing = required.difference(transactions.columns)
     if missing:
-        raise ValueError(f"Missing transaction columns: {', '.join(sorted(missing))}")
+        raise DomainError(ErrorCode.MISSING_COLUMNS, columns=", ".join(sorted(missing)))
     result = transactions.copy()
     result["date"] = pd.to_datetime(result["date"]).dt.date
     result["ticker"] = result["ticker"].str.upper()
     result["type"] = result["type"].astype(str).str.upper()
     unknown = set(result["type"]).difference(_ORDER)
     if unknown:
-        raise ValueError(f"Unknown transaction type: {', '.join(sorted(unknown))}")
+        raise DomainError(ErrorCode.UNKNOWN_TYPE, types=", ".join(sorted(unknown)))
     result["_rank"] = result["type"].map(_ORDER)
     keys = ["date", "_rank", "id"] if "id" in result.columns else ["date", "_rank"]
     return result.sort_values(keys, kind="stable").drop(columns="_rank")
@@ -55,19 +56,19 @@ def validate_transaction(
         price = _number(transaction["price"], "price")
         fees = _number(transaction.get("fees", 0), "fees")
     except (KeyError, TypeError, ValueError) as error:
-        raise ValueError("Transaction contains invalid or missing values") from error
+        raise DomainError(ErrorCode.INVALID_VALUES) from error
     if tx_date > (today or date.today()):
-        raise ValueError("Transaction date cannot be in the future")
+        raise DomainError(ErrorCode.FUTURE_DATE)
     if not ticker:
-        raise ValueError("Ticker is required")
+        raise DomainError(ErrorCode.TICKER_REQUIRED)
     if tx_type not in _ORDER:
-        raise ValueError(f"Transaction type must be one of {', '.join(_ORDER)}")
+        raise DomainError(ErrorCode.INVALID_TYPE, allowed=", ".join(_ORDER))
     if quantity <= 0:
-        raise ValueError("Quantity must be greater than zero")
+        raise DomainError(ErrorCode.QUANTITY_NOT_POSITIVE)
     if price < 0 or fees < 0:
-        raise ValueError("Price and fees cannot be negative")
+        raise DomainError(ErrorCode.NEGATIVE_AMOUNT)
     if tx_type == TransactionType.SPLIT.value and (price or fees):
-        raise ValueError("A split has no price or fees; quantity is the split ratio")
+        raise DomainError(ErrorCode.SPLIT_HAS_PRICE)
 
     history = existing.copy()
     if not history.empty and transaction_id is not None and "id" in history:
@@ -83,16 +84,22 @@ def validate_transaction(
             holdings *= row.quantity
         elif row.type == TransactionType.DIVIDEND.value:
             if row.quantity > holdings + _EPSILON:
-                raise ValueError(
-                    f"Dividend on {row.quantity:g} of {ticker} on {row.date} exceeds "
-                    f"holdings ({holdings:g})"
+                raise DomainError(
+                    ErrorCode.DIVIDEND_EXCEEDS,
+                    quantity=row.quantity,
+                    ticker=ticker,
+                    date=row.date,
+                    holdings=holdings,
                 )
         else:
             holdings += row.quantity if row.type == TransactionType.BUY.value else -row.quantity
             if holdings < -_EPSILON:
-                raise ValueError(
-                    f"Cannot sell {row.quantity:g} of {ticker} on {row.date}; "
-                    f"holdings would be negative ({holdings:g})"
+                raise DomainError(
+                    ErrorCode.OVERSELL,
+                    quantity=row.quantity,
+                    ticker=ticker,
+                    date=row.date,
+                    holdings=holdings,
                 )
 
 
@@ -131,9 +138,7 @@ def calculate_positions(transactions: pd.DataFrame) -> pd.DataFrame:
             position["quantity"] = new_quantity
         elif row.type == TransactionType.SELL.value:
             if row.quantity > position["quantity"] + _EPSILON:
-                raise ValueError(
-                    f"Sell transaction exceeds holdings for {row.ticker} on {row.date}"
-                )
+                raise DomainError(ErrorCode.SELL_EXCEEDS, ticker=row.ticker, date=row.date)
             position["realized_pnl"] += (
                 row.quantity * (row.price - position["average_cost"]) - row.fees
             )
@@ -146,7 +151,13 @@ def calculate_positions(transactions: pd.DataFrame) -> pd.DataFrame:
             position["average_cost"] /= row.quantity
         else:
             if row.quantity > position["quantity"] + _EPSILON:
-                raise ValueError(f"Dividend exceeds holdings for {row.ticker} on {row.date}")
+                raise DomainError(
+                    ErrorCode.DIVIDEND_EXCEEDS,
+                    quantity=row.quantity,
+                    ticker=row.ticker,
+                    date=row.date,
+                    holdings=position["quantity"],
+                )
             position["dividends"] += row.quantity * row.price - row.fees
     return (
         pd.DataFrame.from_dict(positions, orient="index")

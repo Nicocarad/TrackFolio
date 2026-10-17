@@ -7,6 +7,7 @@ from functools import cache
 import pandas as pd
 import yfinance as yf
 
+from trackfolio.errors import DomainError, ErrorCode
 from trackfolio.models import Asset
 
 TIMEOUT_SECONDS = 10
@@ -22,7 +23,7 @@ def _resolve_asset(symbol: str) -> Asset:
     except Exception as error:
         raise RuntimeError(f"Yahoo Finance lookup failed for {symbol}: {error}") from error
     if not info or not info.get("currency"):
-        raise ValueError(f"Yahoo Finance does not recognize ticker {symbol}")
+        raise DomainError(ErrorCode.UNKNOWN_TICKER, ticker=symbol)
     return Asset(
         ticker=symbol,
         name=str(info.get("longName") or info.get("shortName") or symbol),
@@ -50,7 +51,7 @@ class YFinanceProvider:
                 f"Yahoo Finance history request failed for {ticker}: {error}"
             ) from error
         if history.empty or "Close" not in history:
-            raise ValueError(f"No price history returned for {ticker}")
+            raise DomainError(ErrorCode.NO_HISTORY, ticker=ticker)
         closes = history["Close"].dropna().astype("float64")
         closes.index = pd.to_datetime(closes.index).tz_localize(None).normalize()
         closes.name = ticker.upper()

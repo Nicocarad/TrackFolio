@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from trackfolio.core.positions import order_transactions
+from trackfolio.errors import DomainError, ErrorCode
 from trackfolio.models import TransactionType
 
 
@@ -54,7 +55,7 @@ def build_portfolio_timeseries(
     required = {"date", "ticker", "type", "quantity", "price", "fees"}
     missing = required.difference(transactions.columns)
     if missing:
-        raise ValueError(f"Missing transaction columns: {', '.join(sorted(missing))}")
+        raise DomainError(ErrorCode.MISSING_COLUMNS, columns=", ".join(sorted(missing)))
 
     tx = transactions.copy()
     tx["date"] = pd.to_datetime(tx["date"]).dt.normalize()
@@ -66,16 +67,16 @@ def build_portfolio_timeseries(
     price_data.index = pd.to_datetime(price_data.index).normalize()
     price_data.columns = price_data.columns.astype(str).str.upper()
     if price_data.empty:
-        raise ValueError("At least one price observation is required")
+        raise DomainError(ErrorCode.NO_PRICES)
     if not set(tx["ticker"]).issubset(price_data.columns):
         missing_tickers = sorted(set(tx["ticker"]).difference(price_data.columns))
-        raise ValueError(f"Missing price series for: {', '.join(missing_tickers)}")
+        raise DomainError(ErrorCode.MISSING_PRICE_SERIES, tickers=", ".join(missing_tickers))
 
     price_data = price_data[sorted(set(tx["ticker"]))]
     known = {str(k).upper(): str(v).upper() for k, v in asset_currencies.items()}
     no_currency = sorted(set(price_data.columns).difference(known))
     if no_currency:
-        raise ValueError(f"Missing currency for: {', '.join(no_currency)}")
+        raise DomainError(ErrorCode.MISSING_CURRENCY, tickers=", ".join(no_currency))
     price_currencies = {ticker: known[ticker] for ticker in price_data.columns}
 
     start = tx["date"].min()
@@ -106,7 +107,7 @@ def build_portfolio_timeseries(
         fx["EUR"] = 1.0
     if fx.isna().any().any():
         missing_currencies = fx.columns[fx.isna().any()].tolist()
-        raise ValueError(f"Missing FX rates for: {', '.join(missing_currencies)}")
+        raise DomainError(ErrorCode.MISSING_FX, currencies=", ".join(missing_currencies))
 
     tx["valuation_date"] = dates[np.minimum(dates.searchsorted(tx["date"]), len(dates) - 1)]
     quantity_matrix = _quantity_matrix(tx, dates, list(price_data.columns))
@@ -119,7 +120,7 @@ def build_portfolio_timeseries(
     unpriced = (quantity_matrix.abs() > 1e-12) & eur_prices.isna()
     if unpriced.any().any():
         bad = ", ".join(unpriced.columns[unpriced.any()])
-        raise ValueError(f"Holdings without a price before first quote for: {bad}")
+        raise DomainError(ErrorCode.UNPRICED_HOLDINGS, tickers=bad)
     values = (quantity_matrix * eur_prices).sum(axis=1)
 
     signed_flows = []
