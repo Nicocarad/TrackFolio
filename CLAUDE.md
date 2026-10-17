@@ -18,6 +18,6 @@ Local-first portfolio tracker: manual BUY/SELL entry, positions, EUR value histo
 - Run pytest, ruff and mypy after every change and report the results.
 - Never commit `data/*.db` or credentials. Never edit `uv.lock` by hand.
 - Update README.md in the same change as the code it describes.
-- Open work lives in [BACKLOG.md](BACKLOG.md) (design direction in [IMPROVEMENTS.md](IMPROVEMENTS.md)); remove an item in the same change that fixes it.
+- Open work and design direction live in [IMPROVEMENTS.md](IMPROVEMENTS.md); remove an item in the same change that fixes it.
 - Commits: Conventional Commits (`feat:`, `fix:`, `test:`, `docs:`), feature branches `feat/<name>`.
 - A hook runs `ruff format` and `ruff check --fix` after each Python edit.

@@ -40,7 +40,7 @@ Dependencies flow one way: `web → services → core / repositories / market_da
 | `src/trackfolio/services/` | `PortfolioService`: orchestrates DB, providers and `core` |
 | `src/trackfolio/web/` | FastAPI app: Jinja templates and HTMX fragments; routes call `services/` only. Plotly is served from the installed package, HTMX is vendored in `static/` |
 | `tests/` | Unit tests with hand-computed values; network is mocked |
-| `BACKLOG.md`, `IMPROVEMENTS.md` | Open defects and design direction from code review |
+| `IMPROVEMENTS.md` | Open work and design direction |
 | `.claude/`, `CLAUDE.md` | Claude Code settings, hooks and project rules |
 
 The database is created at `data/trackfolio.db` (git-ignored), in WAL mode with foreign keys enforced. The schema is managed by Alembic (`src/trackfolio/migrations/`) and upgraded automatically at startup. A non-empty SQLite database is copied to `data/trackfolio.db.pre-migration-<timestamp>` before each migration. Set `TRACKFOLIO_DATABASE_URL` (e.g. `postgresql+psycopg://user:pass@host/db`) to use PostgreSQL (12 or later) instead of the local SQLite file.
@@ -91,4 +91,4 @@ FX series are stored in `price` under their Yahoo ticker.
 | 3 | Benchmark, volatility, drawdown, Sharpe, correlations, breakdown by asset class/area/currency | Planned |
 | 4 | CSV import/export, multi-portfolio, search by name | Planned |
 | 5 | Taxes, rebalancing, alerts, scenarios | Planned |
-| 6 | FastAPI + HTMX UI, multi-user accounts, authentication, hosted deployment (see [BACKLOG.md](BACKLOG.md#e-multi-user-hosted-service)) | Planned |
+| 6 | FastAPI + HTMX UI, multi-user accounts, authentication, hosted deployment (see [IMPROVEMENTS.md](IMPROVEMENTS.md#2-hosted-multi-user-service)) | Planned |

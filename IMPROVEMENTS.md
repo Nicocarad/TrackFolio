@@ -1,6 +1,6 @@
 # Design notes
 
-Architecture and implementation assessment from a static review (nothing was run). Concrete defects are tracked in [BACKLOG.md](BACKLOG.md); this file holds the design direction behind them.
+Design direction and open work. Items are done when removed from here: delete or rewrite them in the same change that implements them. Product roadmap: [README.md](README.md#roadmap).
 
 ## 1. Web layer: FastAPI + HTMX + Jinja
 
@@ -15,7 +15,7 @@ The UI is a FastAPI app rendering Jinja templates, with HTMX for partial updates
 
 ## 2. Hosted multi-user service
 
-Builds on section 1. Tracked in [BACKLOG.md section E](BACKLOG.md#e-multi-user-hosted-service).
+Builds on section 1; PostgreSQL support and Alembic migrations are already in place. Order matters: E4 before E5, E6 after both.
 
 ```mermaid
 flowchart LR
@@ -26,19 +26,17 @@ flowchart LR
     Job --> Provider[Market data provider]
 ```
 
-| Area | Direction |
-|------|-----------|
-| Database | PostgreSQL; Alembic migrations (B10) before any schema change. |
-| Data ownership | `user` table; `user_id` on `transaction` (and on future per-user tables). `asset` and `price` stay global and shared. Every query filters by user. |
-| Service API | `PortfolioService` takes the current user; no global state. |
-| Authentication | Email + password with argon2 hashes, server-side sessions in secure cookies (or `fastapi-users`); optional OIDC later. CSRF protection for HTMX forms. |
-| Authorization | Isolation tests: user A can never read or modify user B's data. |
-| Prices | Scheduled job refreshes shared prices for all held tickers; users never trigger provider calls directly. |
-| Market data | Free yfinance is unsuitable for a public service (rate limits, terms of use): put a paid provider behind `PriceProvider`. |
-| Instrument search | Rate-limit per user and cache results globally (E9). |
-| Configuration | Settings and secrets from environment variables (pydantic-settings); nothing in the repo. |
-| Deployment | Container image, reverse proxy with HTTPS, health endpoint, structured logging. |
-| Privacy | Account and data deletion, backups, no financial data in logs. |
+| ID | Area | Work |
+|----|------|------|
+| E2 | Configuration | Settings and secrets from environment variables (pydantic-settings); nothing in the repo. |
+| E4 | Data ownership | `user` table; `user_id` on `transaction` (and on future per-user tables); `asset` and `price` stay global and shared. `PortfolioService` takes the current user, every query filters by user, no global state. |
+| E5 | Authentication | Email + password with argon2 hashes, server-side sessions in secure cookies (or `fastapi-users`), login/logout/register pages; optional OIDC later. CSRF protection for HTMX forms. |
+| E6 | Authorization | Isolation tests: user A can never read or modify user B's data. |
+| E7 | Prices | Scheduled job refreshes shared prices for all held tickers; users never trigger provider calls, so the per-user refresh button goes away. |
+| E8 | Market data | Free yfinance is unsuitable for a public service (rate limits, terms of use): put a paid provider behind `PriceProvider`. |
+| E9 | Instrument search | Rate limiting on auth and search; persistent global cache for search results (metadata is cached in memory per process today). |
+| E10 | Deployment | Container image, reverse proxy with HTTPS, health endpoint, structured logging without financial data. |
+| E11 | Privacy | Account and data deletion; backup and restore procedure. |
 
 ## Keep
 
@@ -55,8 +53,7 @@ flowchart LR
 | Topic | Issue | Direction |
 |-------|-------|-----------|
 | Position replay | `validate_transaction` and `calculate_positions` each replay history, which is duplicated logic. | One replay routine in `core/positions.py`, used by both. |
-| Instrument lookup | An ISIN search chains many slow, flaky yfinance calls (`Ticker.get_info`, `Search`). | Build `Asset` from search-result data, call `get_info` only for the selected listing, cache the result (E9). |
-| Presentation in the service | Italian warning strings built in `services/` (C8). | The service returns structured data; the web layer translates. |
+| Instrument lookup | An ISIN search chains many slow, flaky yfinance calls (`Ticker.get_info`, `Search`). | Build `Asset` from search-result data, call `get_info` only for the selected listing, persist the result (E9). |
 | Money type | `float` with ad hoc tolerances such as `1e-9`. | Keep `float`; centralize tolerances and rounding. Move to `Decimal` only if precision errors appear. |
 | Calendar | Business-day index (`freq="B"`) ignores exchange holidays and forward-fills FX across weekends. | Keep; document it in the README if it matters to users. |
 
