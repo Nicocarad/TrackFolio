@@ -32,6 +32,7 @@ def build_holdings(
                 "value_eur": value * rate,
                 "profit_loss": quantity * (price - average_cost),
                 "realized_pnl": float(position["realized_pnl"]),
+                "dividends": float(position["dividends"]),
             }
         )
     return pd.DataFrame(rows).set_index("ticker")

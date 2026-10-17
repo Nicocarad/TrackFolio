@@ -13,6 +13,8 @@ class TransactionType(StrEnum):
 
     BUY = "BUY"
     SELL = "SELL"
+    SPLIT = "SPLIT"
+    DIVIDEND = "DIVIDEND"
 
 
 class Asset(SQLModel, table=True):

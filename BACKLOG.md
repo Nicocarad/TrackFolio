@@ -24,9 +24,7 @@ Most items are superseded by the FastAPI + HTMX migration (E1); fix only those t
 
 | ID | Item |
 |----|------|
-| D1 | Dividends and coupons. |
 | D2 | Show YTD/1Y/3Y returns (`period_returns_pct` exists in `core/returns.py`, not yet shown in the UI). |
-| D3 | `SPLIT` event type. |
 | D4 | Realized vs. unrealized P/L in the dashboard. |
 
 ## E. Multi-user hosted service

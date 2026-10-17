@@ -12,7 +12,18 @@ from trackfolio.models import TransactionType
 _EPSILON = 1e-9
 
 
-def _ordered(transactions: pd.DataFrame) -> pd.DataFrame:
+# Within a day: splits first, then purchases, then dividends, then sales, so the entry order
+# of one day's transactions cannot make a valid history look oversold.
+_ORDER = {
+    TransactionType.SPLIT.value: 0,
+    TransactionType.BUY.value: 1,
+    TransactionType.DIVIDEND.value: 2,
+    TransactionType.SELL.value: 3,
+}
+
+
+def order_transactions(transactions: pd.DataFrame) -> pd.DataFrame:
+    """Normalize ticker/type/date and sort transactions chronologically."""
     required = {"date", "ticker", "type", "quantity", "price", "fees"}
     missing = required.difference(transactions.columns)
     if missing:
@@ -21,10 +32,12 @@ def _ordered(transactions: pd.DataFrame) -> pd.DataFrame:
     result["date"] = pd.to_datetime(result["date"]).dt.date
     result["ticker"] = result["ticker"].str.upper()
     result["type"] = result["type"].astype(str).str.upper()
-    # BUY before SELL within a day, so entry order cannot make a valid day look oversold.
-    result["_sell"] = result["type"] == TransactionType.SELL.value
-    keys = ["date", "_sell", "id"] if "id" in result.columns else ["date", "_sell"]
-    return result.sort_values(keys, kind="stable").drop(columns="_sell")
+    unknown = set(result["type"]).difference(_ORDER)
+    if unknown:
+        raise ValueError(f"Unknown transaction type: {', '.join(sorted(unknown))}")
+    result["_rank"] = result["type"].map(_ORDER)
+    keys = ["date", "_rank", "id"] if "id" in result.columns else ["date", "_rank"]
+    return result.sort_values(keys, kind="stable").drop(columns="_rank")
 
 
 def validate_transaction(
@@ -47,12 +60,14 @@ def validate_transaction(
         raise ValueError("Transaction date cannot be in the future")
     if not ticker:
         raise ValueError("Ticker is required")
-    if tx_type not in {TransactionType.BUY.value, TransactionType.SELL.value}:
-        raise ValueError("Transaction type must be BUY or SELL")
+    if tx_type not in _ORDER:
+        raise ValueError(f"Transaction type must be one of {', '.join(_ORDER)}")
     if quantity <= 0:
         raise ValueError("Quantity must be greater than zero")
     if price < 0 or fees < 0:
         raise ValueError("Price and fees cannot be negative")
+    if tx_type == TransactionType.SPLIT.value and (price or fees):
+        raise ValueError("A split has no price or fees; quantity is the split ratio")
 
     history = existing.copy()
     if not history.empty and transaction_id is not None and "id" in history:
@@ -60,16 +75,25 @@ def validate_transaction(
     proposed = {**transaction, "date": tx_date, "ticker": ticker, "type": tx_type}
     proposed.update(quantity=quantity, price=price, fees=fees)
     history = pd.concat([history, pd.DataFrame([proposed])], ignore_index=True)
-    history = _ordered(history)
+    history = order_transactions(history)
     history = history[history["ticker"] == ticker]
     holdings = 0.0
     for row in history.itertuples(index=False):
-        holdings += row.quantity if row.type == TransactionType.BUY.value else -row.quantity
-        if holdings < -_EPSILON:
-            raise ValueError(
-                f"Cannot sell {row.quantity:g} of {ticker} on {row.date}; "
-                f"holdings would be negative ({holdings:g})"
-            )
+        if row.type == TransactionType.SPLIT.value:
+            holdings *= row.quantity
+        elif row.type == TransactionType.DIVIDEND.value:
+            if row.quantity > holdings + _EPSILON:
+                raise ValueError(
+                    f"Dividend on {row.quantity:g} of {ticker} on {row.date} exceeds "
+                    f"holdings ({holdings:g})"
+                )
+        else:
+            holdings += row.quantity if row.type == TransactionType.BUY.value else -row.quantity
+            if holdings < -_EPSILON:
+                raise ValueError(
+                    f"Cannot sell {row.quantity:g} of {ticker} on {row.date}; "
+                    f"holdings would be negative ({holdings:g})"
+                )
 
 
 def _number(value: object, name: str) -> float:
@@ -83,16 +107,21 @@ def _number(value: object, name: str) -> float:
 
 
 def calculate_positions(transactions: pd.DataFrame) -> pd.DataFrame:
-    """Calculate current quantity, weighted average cost, and realized P&L per ticker."""
-    columns = ["quantity", "average_cost", "realized_pnl"]
+    """Calculate quantity, average cost, realized P&L and net dividends per ticker.
+
+    A split multiplies the quantity and divides the average cost by its ratio; a dividend
+    adds ``quantity * price - fees`` to ``dividends`` and leaves the position unchanged.
+    """
+    columns = ["quantity", "average_cost", "realized_pnl", "dividends"]
     if transactions.empty:
         return pd.DataFrame(columns=columns, dtype="float64").rename_axis("ticker")
 
-    ordered = _ordered(transactions)
+    ordered = order_transactions(transactions)
     positions: dict[str, dict[str, float]] = {}
     for row in ordered.itertuples(index=False):
         position = positions.setdefault(
-            row.ticker, {"quantity": 0.0, "average_cost": 0.0, "realized_pnl": 0.0}
+            row.ticker,
+            {"quantity": 0.0, "average_cost": 0.0, "realized_pnl": 0.0, "dividends": 0.0},
         )
         if row.type == TransactionType.BUY.value:
             new_quantity = position["quantity"] + row.quantity
@@ -112,8 +141,13 @@ def calculate_positions(transactions: pd.DataFrame) -> pd.DataFrame:
             if position["quantity"] <= _EPSILON:
                 position["quantity"] = 0.0
                 position["average_cost"] = 0.0
+        elif row.type == TransactionType.SPLIT.value:
+            position["quantity"] *= row.quantity
+            position["average_cost"] /= row.quantity
         else:
-            raise ValueError(f"Unsupported transaction type: {row.type}")
+            if row.quantity > position["quantity"] + _EPSILON:
+                raise ValueError(f"Dividend exceeds holdings for {row.ticker} on {row.date}")
+            position["dividends"] += row.quantity * row.price - row.fees
     return (
         pd.DataFrame.from_dict(positions, orient="index")
         .reindex(columns=columns)

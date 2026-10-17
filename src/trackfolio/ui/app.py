@@ -66,6 +66,7 @@ else:
             "value_eur": "Valore (EUR)",
             "profit_loss": "P/L (valuta titolo)",
             "realized_pnl": "P/L realizzato (valuta titolo)",
+            "dividends": "Dividendi netti (valuta titolo)",
         }
     )
     st.dataframe(display, use_container_width=True)

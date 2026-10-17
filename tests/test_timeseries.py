@@ -183,7 +183,31 @@ def test_holding_before_first_price_raises() -> None:
 
 
 def test_unknown_transaction_type_raises() -> None:
-    tx = pd.DataFrame([_tx("2025-01-06", "ABC", "DIVIDEND", 1, 10)])
+    tx = pd.DataFrame([_tx("2025-01-06", "ABC", "GIFT", 1, 10)])
     prices = pd.DataFrame({"ABC": [10]}, index=_days("2025-01-06"))
-    with pytest.raises(ValueError, match="Unknown transaction types"):
+    with pytest.raises(ValueError, match="Unknown transaction type"):
         build_portfolio_timeseries(tx, prices, EUR_ABC)
+
+
+def test_split_values_pre_split_shares_with_adjusted_prices() -> None:
+    # 10 shares at 100, then a 2:1 split; provider closes are split-adjusted (50 throughout).
+    tx = pd.DataFrame(
+        [_tx("2025-01-06", "ABC", "BUY", 10, 100), _tx("2025-01-08", "ABC", "SPLIT", 2, 0)]
+    )
+    days = _days("2025-01-06", "2025-01-07", "2025-01-08", "2025-01-09")
+    history = build_portfolio_timeseries(tx, pd.DataFrame({"ABC": [50.0] * 4}, index=days), EUR_ABC)
+    assert history["value"].tolist() == pytest.approx([1000, 1000, 1000, 1000])
+    assert history["invested_capital"].tolist() == pytest.approx([1000] * 4)
+
+
+def test_dividend_is_a_cash_return_that_leaves_the_position_unchanged() -> None:
+    # 10 shares at 100; dividend 0.5 per share with 1 withheld -> net 4 returned.
+    tx = pd.DataFrame(
+        [_tx("2025-01-06", "ABC", "BUY", 10, 100), _tx("2025-01-08", "ABC", "DIVIDEND", 10, 0.5, 1)]
+    )
+    days = _days("2025-01-06", "2025-01-07", "2025-01-08")
+    history = build_portfolio_timeseries(
+        tx, pd.DataFrame({"ABC": [100.0] * 3}, index=days), EUR_ABC
+    )
+    assert history["value"].tolist() == pytest.approx([1000] * 3)
+    assert history["invested_capital"].tolist() == pytest.approx([1000, 1000, 996])

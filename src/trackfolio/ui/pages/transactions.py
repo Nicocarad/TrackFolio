@@ -1,6 +1,7 @@
 """Transaction entry, editing, and deletion."""
 
 from datetime import date
+from typing import cast
 
 import streamlit as st
 
@@ -89,13 +90,14 @@ try:
         tx_date = row_one[1].date_input(
             "Data", value=current.date if current else date.today(), max_value=date.today()
         )
-        tx_type = row_one[2].selectbox(
-            "Tipo",
-            [TransactionType.BUY, TransactionType.SELL],
-            index=(
-                [TransactionType.BUY, TransactionType.SELL].index(current.type) if current else 0
+        tx_type = cast(
+            TransactionType,
+            row_one[2].selectbox(
+                "Tipo",
+                list(TransactionType),
+                index=list(TransactionType).index(current.type) if current else 0,
+                format_func=lambda value: value.value,
             ),
-            format_func=lambda value: value.value,
         )
         asset_currency = (
             initial_asset.currency
@@ -107,6 +109,8 @@ try:
         row_two = st.columns(4)
         quantity = row_two[0].number_input(
             "Quantità",
+            help="SPLIT: rapporto (2 = 2 per 1, 0.1 = raggruppamento 10 a 1). "
+            "DIVIDEND: numero di titoli.",
             min_value=0.000001,
             value=float(current.quantity) if current else 1.0,
             step=1.0,
@@ -114,6 +118,7 @@ try:
         )
         unit_price = row_two[1].number_input(
             "Prezzo unitario",
+            help="DIVIDEND: importo lordo per titolo. SPLIT: lasciare 0.",
             min_value=0.0,
             value=float(current.price) if current else 0.0,
             step=0.01,
@@ -121,6 +126,7 @@ try:
         )
         fees = row_two[2].number_input(
             "Commissioni",
+            help="DIVIDEND: ritenute e commissioni. SPLIT: lasciare 0.",
             min_value=0.0,
             value=float(current.fees) if current else 0.0,
             step=0.01,

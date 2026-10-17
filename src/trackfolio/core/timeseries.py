@@ -5,7 +5,34 @@ from collections.abc import Mapping
 import numpy as np
 import pandas as pd
 
+from trackfolio.core.positions import order_transactions
 from trackfolio.models import TransactionType
+
+
+def _quantity_matrix(tx: pd.DataFrame, dates: pd.DatetimeIndex, tickers: list[str]) -> pd.DataFrame:
+    """Daily quantities expressed in current (post-split) shares.
+
+    Provider closes are split-adjusted, so a holding is valued with the quantity it would
+    be today: shares held before a split are multiplied by the ratios of later splits.
+    """
+    matrix = pd.DataFrame(0.0, index=dates, columns=tickers)
+    for ticker, rows in tx.groupby("ticker"):
+        quantity = 0.0
+        after: dict[pd.Timestamp, float] = {}
+        ratios = pd.Series(1.0, index=dates)
+        for row in rows.itertuples(index=False):
+            if row.type == TransactionType.BUY.value:
+                quantity += row.quantity
+            elif row.type == TransactionType.SELL.value:
+                quantity -= row.quantity
+            elif row.type == TransactionType.SPLIT.value:
+                quantity *= row.quantity
+                ratios[row.valuation_date] *= row.quantity
+            after[row.valuation_date] = quantity
+        held = pd.Series(after).reindex(dates).ffill().fillna(0.0)
+        cumulative = ratios.cumprod()
+        matrix[str(ticker)] = held * (cumulative.iloc[-1] / cumulative)
+    return matrix
 
 
 def build_portfolio_timeseries(
@@ -33,10 +60,8 @@ def build_portfolio_timeseries(
     tx["date"] = pd.to_datetime(tx["date"]).dt.normalize()
     tx["ticker"] = tx["ticker"].str.upper()
     tx["type"] = tx["type"].astype(str).str.upper()
-    valid_types = {TransactionType.BUY.value, TransactionType.SELL.value}
-    unknown_types = set(tx["type"]).difference(valid_types)
-    if unknown_types:
-        raise ValueError(f"Unknown transaction types: {', '.join(sorted(unknown_types))}")
+    tx = order_transactions(tx)
+    tx["date"] = pd.to_datetime(tx["date"])
     price_data = prices.copy()
     price_data.index = pd.to_datetime(price_data.index).normalize()
     price_data.columns = price_data.columns.astype(str).str.upper()
@@ -83,16 +108,8 @@ def build_portfolio_timeseries(
         missing_currencies = fx.columns[fx.isna().any()].tolist()
         raise ValueError(f"Missing FX rates for: {', '.join(missing_currencies)}")
 
-    sign = np.where(tx["type"] == TransactionType.BUY.value, 1.0, -1.0)
-    tx["delta"] = tx["quantity"] * sign
     tx["valuation_date"] = dates[np.minimum(dates.searchsorted(tx["date"]), len(dates) - 1)]
-    quantity_matrix = (
-        tx.pivot_table(
-            index="valuation_date", columns="ticker", values="delta", aggfunc="sum", fill_value=0.0
-        )
-        .reindex(index=dates, columns=price_data.columns, fill_value=0.0)
-        .cumsum()
-    )
+    quantity_matrix = _quantity_matrix(tx, dates, list(price_data.columns))
 
     eur_prices = prices_aligned.copy()
     for ticker in eur_prices.columns:
@@ -110,9 +127,11 @@ def build_portfolio_timeseries(
         amount = row.quantity * row.price
         if row.type == TransactionType.BUY.value:
             flow = amount + row.fees
-        else:
+        elif row.type == TransactionType.SPLIT.value:
+            continue
+        else:  # SELL and DIVIDEND: cash returned to the investor
             flow = -(amount - row.fees)
-        flow_date = dates[min(dates.searchsorted(row.date), len(dates) - 1)]
+        flow_date = row.valuation_date
         rate = fx.loc[flow_date, price_currencies[row.ticker]]
         signed_flows.append((flow_date, flow * rate))
     flow_series = pd.Series(

@@ -174,3 +174,51 @@ def test_numeric_types_accepted(value: object) -> None:
 def test_non_finite_or_non_numeric_rejected(value: object) -> None:
     with pytest.raises(ValueError, match="invalid"):
         validate_transaction({**_tx("2025-01-01", "BUY", 1), "quantity": value}, pd.DataFrame())
+
+
+def test_split_scales_quantity_and_average_cost_but_not_total_cost() -> None:
+    frame = pd.DataFrame([_tx("2025-01-01", "BUY", 10), _tx("2025-02-01", "SPLIT", 2, price=0)])
+    position = calculate_positions(frame).loc["ABC"]
+    assert position["quantity"] == pytest.approx(20)
+    assert position["average_cost"] == pytest.approx(5)  # 10 / 2
+
+
+def test_reverse_split_then_sell_realizes_against_adjusted_cost() -> None:
+    frame = pd.DataFrame(
+        [
+            _tx("2025-01-01", "BUY", 10),
+            _tx("2025-02-01", "SPLIT", 0.1, price=0),
+            _tx("2025-03-01", "SELL", 1, price=130),
+        ]
+    )
+    position = calculate_positions(frame).loc["ABC"]
+    assert position["quantity"] == pytest.approx(0)
+    assert position["realized_pnl"] == pytest.approx(1 * (130 - 100))
+
+
+def test_dividend_accumulates_net_amount_without_touching_the_position() -> None:
+    frame = pd.DataFrame(
+        [
+            _tx("2025-01-01", "BUY", 10),
+            _tx("2025-02-01", "DIVIDEND", 10, price=0.5, fees=1),
+            _tx("2025-03-01", "DIVIDEND", 10, price=0.5),
+        ]
+    )
+    position = calculate_positions(frame).loc["ABC"]
+    assert position["dividends"] == pytest.approx(4 + 5)
+    assert position["quantity"] == pytest.approx(10)
+    assert position["average_cost"] == pytest.approx(10)
+
+
+def test_dividend_needs_holdings_and_split_has_no_price() -> None:
+    with pytest.raises(ValueError, match="exceeds holdings"):
+        validate_transaction(_tx("2025-01-01", "DIVIDEND", 1, price=0.5), pd.DataFrame())
+    with pytest.raises(ValueError, match="no price"):
+        validate_transaction(_tx("2025-01-01", "SPLIT", 2, price=1), pd.DataFrame())
+
+
+def test_sell_after_split_uses_post_split_holdings() -> None:
+    history = pd.DataFrame([_tx("2025-01-01", "BUY", 10), _tx("2025-02-01", "SPLIT", 2, price=0)])
+    validate_transaction(_tx("2025-03-01", "SELL", 15), history, today=date(2025, 4, 1))
+    with pytest.raises(ValueError, match="negative"):
+        validate_transaction(_tx("2025-03-01", "SELL", 21), history, today=date(2025, 4, 1))
