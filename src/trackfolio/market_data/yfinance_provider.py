@@ -1,6 +1,8 @@
 """Yahoo Finance implementation of the market-data contract."""
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
+from functools import cache
 
 import pandas as pd
 import yfinance as yf
@@ -8,6 +10,26 @@ import yfinance as yf
 from trackfolio.models import Asset
 
 TIMEOUT_SECONDS = 10
+SEARCH_WORKERS = 5
+
+
+@cache
+def _resolve_asset(symbol: str) -> Asset:
+    """Fetch instrument metadata once per process; failures are not cached."""
+    try:
+        # yfinance get_info() exposes no timeout parameter.
+        info = yf.Ticker(symbol).get_info()
+    except Exception as error:
+        raise RuntimeError(f"Yahoo Finance lookup failed for {symbol}: {error}") from error
+    if not info or not info.get("currency"):
+        raise ValueError(f"Yahoo Finance does not recognize ticker {symbol}")
+    return Asset(
+        ticker=symbol,
+        name=str(info.get("longName") or info.get("shortName") or symbol),
+        currency=str(info["currency"]).upper(),
+        exchange=str(info.get("exchange") or "") or None,
+        asset_class=str(info.get("quoteType") or "") or None,
+    )
 
 
 class YFinanceProvider:
@@ -36,21 +58,7 @@ class YFinanceProvider:
 
     def get_asset(self, ticker: str) -> Asset:
         """Resolve a ticker using Yahoo Finance instrument metadata."""
-        symbol = ticker.strip().upper()
-        try:
-            # yfinance get_info() exposes no timeout parameter.
-            info = yf.Ticker(symbol).get_info()
-        except Exception as error:
-            raise RuntimeError(f"Yahoo Finance lookup failed for {symbol}: {error}") from error
-        if not info or not info.get("currency"):
-            raise ValueError(f"Yahoo Finance does not recognize ticker {symbol}")
-        return Asset(
-            ticker=symbol,
-            name=str(info.get("longName") or info.get("shortName") or symbol),
-            currency=str(info["currency"]).upper(),
-            exchange=str(info.get("exchange") or "") or None,
-            asset_class=str(info.get("quoteType") or "") or None,
-        )
+        return _resolve_asset(ticker.strip().upper()).model_copy()
 
     def search_tickers(self, query: str) -> list[Asset]:
         """Search Yahoo Finance symbols by name or ticker."""
@@ -58,24 +66,29 @@ class YFinanceProvider:
             quotes = yf.Search(query, max_results=10, timeout=TIMEOUT_SECONDS).quotes
         except Exception as error:
             raise RuntimeError(f"Yahoo Finance search failed for {query!r}: {error}") from error
+        quotes = [quote for quote in quotes if quote.get("symbol")]
+        with ThreadPoolExecutor(max_workers=SEARCH_WORKERS) as pool:
+            resolved = list(pool.map(self._asset_from_quote, quotes))
         assets: dict[str, Asset] = {}
-        for quote in quotes:
-            symbol = quote.get("symbol")
-            if not symbol:
-                continue
-            normalized = str(symbol).upper()
-            try:
-                asset = self.get_asset(normalized)
-            except ValueError, RuntimeError:
-                currency = quote.get("currency")
-                if not currency:
-                    continue
-                asset = Asset(
-                    ticker=normalized,
-                    name=str(quote.get("longname") or quote.get("shortname") or symbol),
-                    currency=str(currency).upper(),
-                    exchange=str(quote.get("exchDisp") or "") or None,
-                    asset_class=str(quote.get("quoteType") or "") or None,
-                )
-            assets.setdefault(normalized, asset)
+        for asset in resolved:
+            if asset:
+                assets.setdefault(asset.ticker, asset)
         return list(assets.values())
+
+    def _asset_from_quote(self, quote: dict[str, object]) -> Asset | None:
+        """Prefer full metadata; fall back to the search quote when it carries a currency."""
+        symbol = str(quote["symbol"])
+        normalized = symbol.upper()
+        try:
+            return self.get_asset(normalized)
+        except ValueError, RuntimeError:
+            currency = quote.get("currency")
+            if not currency:
+                return None
+            return Asset(
+                ticker=normalized,
+                name=str(quote.get("longname") or quote.get("shortname") or symbol),
+                currency=str(currency).upper(),
+                exchange=str(quote.get("exchDisp") or "") or None,
+                asset_class=str(quote.get("quoteType") or "") or None,
+            )

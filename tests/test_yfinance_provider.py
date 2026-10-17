@@ -4,9 +4,18 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from trackfolio.market_data.yfinance_provider import TIMEOUT_SECONDS, YFinanceProvider
+from trackfolio.market_data.yfinance_provider import (
+    TIMEOUT_SECONDS,
+    YFinanceProvider,
+    _resolve_asset,
+)
 
 MODULE = "trackfolio.market_data.yfinance_provider.yf"
+
+
+@pytest.fixture(autouse=True)
+def _clear_asset_cache() -> None:
+    _resolve_asset.cache_clear()
 
 
 def test_history_normalizes_timezone_and_passes_timeout() -> None:
@@ -50,7 +59,7 @@ def test_get_asset_maps_info_and_rejects_unknown() -> None:
             YFinanceProvider().get_asset("NOPE")
         yf.Ticker.return_value.get_info.side_effect = ConnectionError("down")
         with pytest.raises(RuntimeError, match="lookup failed"):
-            YFinanceProvider().get_asset("AAPL")
+            YFinanceProvider().get_asset("DOWN")
 
 
 def test_search_uses_timeout_and_falls_back_to_quote_data() -> None:
@@ -72,3 +81,21 @@ def test_search_wraps_errors() -> None:
         yf.Search.side_effect = OSError("down")
         with pytest.raises(RuntimeError, match="search failed"):
             YFinanceProvider().search_tickers("abc")
+
+
+def test_get_asset_is_cached_and_returns_independent_copies() -> None:
+    with patch(MODULE) as yf:
+        yf.Ticker.return_value.get_info.return_value = {"currency": "EUR", "shortName": "X"}
+        first = YFinanceProvider().get_asset("X")
+        first.name = "changed"
+        second = YFinanceProvider().get_asset("x")
+    assert yf.Ticker.return_value.get_info.call_count == 1
+    assert second.name == "X"
+
+
+def test_get_asset_failures_are_not_cached() -> None:
+    with patch(MODULE) as yf:
+        yf.Ticker.return_value.get_info.side_effect = [KeyError("boom"), {"currency": "EUR"}]
+        with pytest.raises(RuntimeError):
+            YFinanceProvider().get_asset("X")
+        assert YFinanceProvider().get_asset("X").currency == "EUR"

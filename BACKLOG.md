@@ -14,7 +14,6 @@ Product roadmap: [README.md](README.md#roadmap).
 
 | ID | File | Problem | Fix |
 |----|------|---------|-----|
-| B5 | `market_data/instrument_search.py` | A lookup can make ~50 sequential requests; no result cache. | Cache results in the DB, build `Asset` from quote data. |
 
 ## C. UI
 
@@ -54,6 +53,6 @@ Design in [IMPROVEMENTS.md](IMPROVEMENTS.md#2-hosted-multi-user-service). Order 
 | E6 | Authorization tests proving cross-user isolation. |
 | E7 | Scheduled shared price-refresh job; remove the per-user refresh button. |
 | E8 | Paid or otherwise hosting-safe market data provider behind `PriceProvider`. |
-| E9 | Rate limiting on auth and instrument search; global cache for search results. |
+| E9 | Rate limiting on auth and instrument search; persistent global cache for search results (metadata is cached in memory per process today). |
 | E10 | Container image, reverse proxy with HTTPS, health endpoint, structured logging without financial data. |
 | E11 | Account and data deletion; backup and restore procedure. |
