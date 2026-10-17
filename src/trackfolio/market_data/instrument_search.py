@@ -62,7 +62,7 @@ def search_isin(isin_value: str, provider: PriceProvider) -> list[Asset]:
             continue
         try:
             asset = provider.get_asset(ticker)
-        except (ValueError, RuntimeError):
+        except ValueError, RuntimeError:
             continue
         candidates[ticker] = asset.model_copy(update={"isin": normalized})
     return list(candidates.values())

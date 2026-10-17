@@ -23,7 +23,7 @@ class FakeProvider:
 
 
 @pytest.fixture
-def service() -> Generator[PortfolioService, None, None]:
+def service() -> Generator[PortfolioService]:
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},

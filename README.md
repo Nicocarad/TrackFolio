@@ -1,64 +1,89 @@
 # TrackFolio
 
-TrackFolio è un'applicazione locale per registrare manualmente acquisti e vendite,
-ricostruire le posizioni e visualizzare valore storico e rendimento del portafoglio.
-I dati sono conservati in un database SQLite locale; le richieste esterne riguardano
-solo ricerca dei titoli e dati di mercato.
+Local-first investment tracker. You enter BUY/SELL transactions by hand; TrackFolio rebuilds your positions, the historical value of the portfolio and its return, all in EUR. Data lives in a local SQLite file. The only external requests are instrument search and market data.
 
-## Requisiti
+## Quick start
 
-- Python 3.12 o superiore
-- [uv](https://docs.astral.sh/uv/) per installazione e comandi riproducibili
+Requires Python 3.14+ and [uv](https://docs.astral.sh/uv/).
 
-## Avvio rapido
-
-```powershell
+```bash
 uv sync --extra dev
 uv run streamlit run src/trackfolio/ui/app.py
 ```
 
-Apri l'indirizzo locale mostrato da Streamlit. La pagina **Transazioni** consente di
-cercare uno strumento tramite ISIN o ticker, scegliere la quotazione e inserire,
-modificare o eliminare le operazioni. La pagina **TrackFolio** mostra KPI, posizioni,
-allocazione e storico. Il pulsante **Aggiorna prezzi** aggiorna la cache locale.
+Open the local URL Streamlit prints.
 
-In alternativa, con un ambiente Python attivo:
+| Page | Purpose |
+|------|---------|
+| Transazioni | Search an instrument by ISIN or ticker, pick a listing, add / edit / delete transactions |
+| TrackFolio | KPIs, positions, allocation, value vs. invested capital; **Aggiorna prezzi** refreshes the price cache |
 
-```powershell
-python -m pip install -e ".[dev]"
-python -m streamlit run src/trackfolio/ui/app.py
-```
+Checks: `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy src`.
 
-## Test e qualità
+## Features
 
-```powershell
-uv run pytest
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy src
-```
+- Transaction CRUD with validation: positive quantity, non-negative price and fees, no future dates, no selling more than held on that date, transaction currency equal to the asset currency.
+- ISIN lookup (format and check digit validated with `python-stdnum`) via OpenFIGI, with Yahoo Finance search as fallback. An ISIN identifies the instrument, not the listing, so you choose the exchange and ticker.
+- Daily closing prices from Yahoo Finance, cached in SQLite. If the source is unreachable the cache is used and the missing tickers are reported.
+- Historical FX to EUR (`EUR{CUR}=X`) for prices and invested capital.
+- Positions with average cost, price and unrealized P/L in the instrument currency; portfolio KPIs in EUR.
 
-## Dati e valute
+## Architecture
 
-Il database viene creato in `data/trackfolio.db`, escluso da Git. I prezzi giornalieri
-provengono da Yahoo Finance e vengono memorizzati localmente. OpenFIGI è usato per
-risolvere un ISIN; la ricerca Yahoo Finance è il fallback disponibile. I prezzi e il
-capitale investito sono convertiti in EUR tramite cambi storici Yahoo Finance.
+Dependencies flow one way: `ui → services → core / repositories / market_data`.
 
-L'app non può aggiornare i prezzi se la fonte remota non è raggiungibile: in tal caso
-mantiene la cache già salvata e segnala esplicitamente i ticker non disponibili. I
-risultati dei provider gratuiti possono essere incompleti o in ritardo. Le posizioni
-mostrano costo medio, prezzo e P/L non realizzato nella valuta dello strumento; i KPI
-aggregati sono espressi in EUR.
+| Path | Role |
+|------|------|
+| `src/trackfolio/core/` | Pure calculations (no I/O): positions, time series, metrics |
+| `src/trackfolio/market_data/` | `PriceProvider` interface, Yahoo Finance provider, ISIN/ticker search |
+| `src/trackfolio/repositories/` | SQLite persistence for assets, transactions, prices |
+| `src/trackfolio/services/` | `PortfolioService`: orchestrates DB, providers and `core` |
+| `src/trackfolio/ui/` | Streamlit app and pages; calls `services/` only |
+| `tests/` | Unit tests with hand-computed values; network is mocked |
+| `BACKLOG.md`, `IMPROVEMENTS.md` | Open defects and design direction from code review |
+| `.claude/`, `CLAUDE.md` | Claude Code settings, hooks and project rules |
 
-## Struttura
+The database is created at `data/trackfolio.db` (git-ignored).
 
-- `src/trackfolio/core/`: calcoli puri di posizioni, serie storiche e KPI.
-- `src/trackfolio/market_data/`: provider di mercato e ricerca ISIN/ticker.
-- `src/trackfolio/repositories/`: persistenza SQLite.
-- `src/trackfolio/services/`: orchestrazione delle operazioni applicative.
-- `src/trackfolio/ui/`: interfaccia Streamlit.
-- `tests/`: test unitari dei calcoli finanziari.
+<details>
+<summary>Data model</summary>
 
-La roadmap e i requisiti funzionali sono definiti in
-[.github/copilot-instructions.md](.github/copilot-instructions.md).
+| Table | Columns |
+|-------|---------|
+| `asset` | `ticker` (PK, provider format e.g. `VWCE.DE`), `isin`, `exchange`, `name`, `currency`, `asset_class` |
+| `transaction` | `id` (PK), `date`, `ticker` (FK), `type` (BUY/SELL), `quantity`, `price`, `fees`, `currency`, `notes` |
+| `price` | `ticker` + `date` (PK), `close`, `source`, `fetched_at` |
+
+FX series are stored in `price` under their Yahoo ticker.
+
+</details>
+
+<details>
+<summary>Calculation rules</summary>
+
+- **Average cost (PMC):** BUY → `(q_old·pmc_old + q·p + fees) / (q_old + q)`; SELL leaves it unchanged.
+- **Realized P/L (SELL):** `q·(p − pmc) − fees`. **Unrealized:** `qty·(price − pmc)`.
+- **Value(t):** `Σ qty_i(t) · price_i(t) · fx_i(t)` on business days, prices forward-filled.
+- **Net invested capital:** cumulative BUY `(amount + fees)` minus SELL `(amount − fees)`, in EUR.
+- **KPIs:** P/L = value − invested capital; return % = P/L / invested capital.
+
+</details>
+
+## Known limits
+
+- Prices only: dividends are ignored, so total return is understated for distributing assets.
+- No stock-split events: quantities entered before a split must be adjusted by hand (Yahoo prices are split-adjusted).
+- Yahoo Finance is unofficial and free providers can be incomplete or delayed; not every OpenFIGI listing has a Yahoo ticker (enter the ticker manually).
+- A ticker is the asset key: the same instrument on several exchanges is stored as separate assets.
+- Daily closes only; amounts use `float`.
+
+## Roadmap
+
+| Phase | Content | Status |
+|-------|---------|--------|
+| 1 | Transactions, price cache, positions, value series, base KPIs | Implemented |
+| 2 | Dividends, TWR, XIRR, CAGR, YTD/1Y/3Y returns, realized vs. unrealized P/L | Planned |
+| 3 | Benchmark, volatility, drawdown, Sharpe, correlations, breakdown by asset class/area/currency | Planned |
+| 4 | CSV import/export, multi-portfolio, search by name | Planned |
+| 5 | Taxes, rebalancing, alerts, scenarios | Planned |
+| 6 | FastAPI + HTMX UI, multi-user accounts, authentication, hosted deployment (see [BACKLOG.md](BACKLOG.md#e-multi-user-hosted-service)) | Planned |
