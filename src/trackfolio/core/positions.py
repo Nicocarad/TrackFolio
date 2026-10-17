@@ -62,7 +62,6 @@ def validate_transaction(
     history = pd.concat([history, pd.DataFrame([proposed])], ignore_index=True)
     history = _ordered(history)
     history = history[history["ticker"] == ticker]
-    _check_currencies(history)
     holdings = 0.0
     for row in history.itertuples(index=False):
         holdings += row.quantity if row.type == TransactionType.BUY.value else -row.quantity
@@ -71,16 +70,6 @@ def validate_transaction(
                 f"Cannot sell {row.quantity:g} of {ticker} on {row.date}; "
                 f"holdings would be negative ({holdings:g})"
             )
-
-
-def _check_currencies(transactions: pd.DataFrame) -> None:
-    """Reject a ticker traded in more than one currency (cost basis would mix them)."""
-    if "currency" not in transactions.columns:
-        return
-    currencies = transactions.dropna(subset=["currency"]).groupby("ticker")["currency"]
-    for ticker, values in currencies:
-        if values.astype(str).str.upper().nunique() > 1:
-            raise ValueError(f"Multiple currencies for {ticker} are not supported")
 
 
 def _number(value: object, name: str) -> float:
@@ -100,7 +89,6 @@ def calculate_positions(transactions: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=columns, dtype="float64").rename_axis("ticker")
 
     ordered = _ordered(transactions)
-    _check_currencies(ordered)
     positions: dict[str, dict[str, float]] = {}
     for row in ordered.itertuples(index=False):
         position = positions.setdefault(

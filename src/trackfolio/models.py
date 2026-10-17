@@ -42,7 +42,6 @@ class Transaction(SQLModel, table=True):
     quantity: float = Field(gt=0)
     price: float = Field(ge=0)
     fees: float = Field(default=0, ge=0)
-    currency: str = Field(min_length=3, max_length=3)
     notes: str | None = None
 
 

@@ -11,21 +11,20 @@ from trackfolio.models import TransactionType
 def build_portfolio_timeseries(
     transactions: pd.DataFrame,
     prices: pd.DataFrame,
+    asset_currencies: Mapping[str, str],
     fx_rates: pd.DataFrame | None = None,
-    asset_currencies: Mapping[str, str] | None = None,
 ) -> pd.DataFrame:
     """Build daily EUR portfolio value and net invested capital series.
 
     Prices are in each asset's local currency. FX columns contain local-currency-to-EUR
-    multipliers and must include transaction currencies as well as price currencies.
-    ``asset_currencies`` maps ticker to the currency its price is quoted in; tickers not in
-    the map fall back to the currency of their first transaction.
-    Raises ValueError for unknown transaction types, missing prices or FX rates, and a
-    non-zero holding without a price.
+    multipliers and must cover every asset currency. ``asset_currencies`` maps each traded
+    ticker to its currency; transactions are in that currency too.
+    Raises ValueError for unknown transaction types, missing prices, currencies or FX rates,
+    and a non-zero holding without a price.
     """
     if transactions.empty:
         return pd.DataFrame(columns=["value", "invested_capital"], index=pd.DatetimeIndex([]))
-    required = {"date", "ticker", "type", "quantity", "price", "fees", "currency"}
+    required = {"date", "ticker", "type", "quantity", "price", "fees"}
     missing = required.difference(transactions.columns)
     if missing:
         raise ValueError(f"Missing transaction columns: {', '.join(sorted(missing))}")
@@ -33,7 +32,6 @@ def build_portfolio_timeseries(
     tx = transactions.copy()
     tx["date"] = pd.to_datetime(tx["date"]).dt.normalize()
     tx["ticker"] = tx["ticker"].str.upper()
-    tx["currency"] = tx["currency"].str.upper()
     tx["type"] = tx["type"].astype(str).str.upper()
     valid_types = {TransactionType.BUY.value, TransactionType.SELL.value}
     unknown_types = set(tx["type"]).difference(valid_types)
@@ -49,12 +47,11 @@ def build_portfolio_timeseries(
         raise ValueError(f"Missing price series for: {', '.join(missing_tickers)}")
 
     price_data = price_data[sorted(set(tx["ticker"]))]
-    price_currencies = tx.drop_duplicates("ticker").set_index("ticker")["currency"].to_dict()
-    if asset_currencies:
-        price_currencies.update(
-            {str(k).upper(): str(v).upper() for k, v in asset_currencies.items()}
-        )
-    price_currencies = {t: price_currencies[t] for t in price_data.columns}
+    known = {str(k).upper(): str(v).upper() for k, v in asset_currencies.items()}
+    no_currency = sorted(set(price_data.columns).difference(known))
+    if no_currency:
+        raise ValueError(f"Missing currency for: {', '.join(no_currency)}")
+    price_currencies = {ticker: known[ticker] for ticker in price_data.columns}
 
     start = tx["date"].min()
     end = max(price_data.index.max(), tx["date"].max())
@@ -67,7 +64,7 @@ def build_portfolio_timeseries(
         price_data.sort_index().reindex(price_data.index.union(dates)).ffill().reindex(dates)
     )
 
-    currencies = set(tx["currency"]) | set(price_currencies.values())
+    currencies = set(price_currencies.values())
     fx = pd.DataFrame(index=dates, columns=sorted(currencies), dtype="float64")
     if fx_rates is not None:
         rates = fx_rates.copy()
@@ -116,7 +113,7 @@ def build_portfolio_timeseries(
         else:
             flow = -(amount - row.fees)
         flow_date = dates[min(dates.searchsorted(row.date), len(dates) - 1)]
-        rate = fx.loc[flow_date, row.currency]
+        rate = fx.loc[flow_date, price_currencies[row.ticker]]
         signed_flows.append((flow_date, flow * rate))
     flow_series = pd.Series(
         [amount for _, amount in signed_flows],

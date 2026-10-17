@@ -72,7 +72,6 @@ def test_engine_enforces_foreign_keys_and_checks() -> None:
                 type=TransactionType.BUY,
                 quantity=1,
                 price=1,
-                currency="EUR",
             )
         )
         with pytest.raises(IntegrityError):
@@ -82,7 +81,7 @@ def test_engine_enforces_foreign_keys_and_checks() -> None:
         with pytest.raises(IntegrityError):
             session.execute(
                 text(
-                    'INSERT INTO "transaction" (date, ticker, type, quantity, price, fees,'
-                    " currency) VALUES ('2024-01-02', 'ABC', 'BUY', -1, 1, 0, 'EUR')"
+                    'INSERT INTO "transaction" (date, ticker, type, quantity, price, fees)'
+                    " VALUES ('2024-01-02', 'ABC', 'BUY', -1, 1, 0)"
                 )
             )

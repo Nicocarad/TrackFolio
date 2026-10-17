@@ -22,7 +22,7 @@ Checks: `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`, 
 
 ## Features
 
-- Transaction CRUD with validation: positive quantity, non-negative price and fees, no future dates, no selling more than held on that date, transaction currency equal to the asset currency.
+- Transaction CRUD with validation: positive quantity, non-negative price and fees, no future dates, no selling more than held on that date. Transactions use the currency of their asset.
 - ISIN lookup (format and check digit validated with `python-stdnum`) via OpenFIGI, with Yahoo Finance search as fallback. An ISIN identifies the instrument, not the listing, so you choose the exchange and ticker. OpenFIGI requests retry on 429/5xx (honoring `Retry-After`); a persistent 429 is reported instead of falling back to Yahoo. Set `OPENFIGI_API_KEY` for higher rate limits. Yahoo requests time out after 10 s; instrument metadata is cached in memory for the life of the process and resolved in parallel.
 - Daily closing prices from Yahoo Finance, cached in SQLite. If the source is unreachable the cache is used and the missing tickers are reported.
 - Historical FX to EUR (`EUR{CUR}=X`) for prices and invested capital.
@@ -53,7 +53,7 @@ After changing `models.py`: `uv run alembic revision --autogenerate -m "<change>
 | Table | Columns |
 |-------|---------|
 | `asset` | `ticker` (PK, provider format e.g. `VWCE.DE`), `isin`, `exchange`, `name`, `currency`, `asset_class` |
-| `transaction` | `id` (PK), `date`, `ticker` (FK), `type` (BUY/SELL), `quantity`, `price`, `fees`, `currency`, `notes` |
+| `transaction` | `id` (PK), `date`, `ticker` (FK), `type` (BUY/SELL), `quantity`, `price`, `fees`, `notes` |
 | `price` | `ticker` + `date` (PK), `close`, `source`, `fetched_at` |
 
 FX series are stored in `price` under their Yahoo ticker.

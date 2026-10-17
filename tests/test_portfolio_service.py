@@ -46,7 +46,6 @@ def test_service_saves_transaction_and_rejects_removing_required_purchase(
             type=TransactionType.BUY,
             quantity=5,
             price=10,
-            currency="EUR",
         )
     )
     assert buy.id is not None
@@ -57,7 +56,6 @@ def test_service_saves_transaction_and_rejects_removing_required_purchase(
             type=TransactionType.SELL,
             quantity=2,
             price=12,
-            currency="EUR",
         )
     )
 
@@ -77,7 +75,6 @@ def test_service_refreshes_and_builds_dashboard_from_cached_prices(
             quantity=2,
             price=10,
             fees=1,
-            currency="EUR",
         )
     )
 
@@ -93,30 +90,29 @@ def test_service_refreshes_and_builds_dashboard_from_cached_prices(
     assert metrics.total_value > 0
 
 
-def _buy(ticker: str = "ABC", currency: str = "EUR", days_ago: int = 5) -> Transaction:
+def _buy(ticker: str = "ABC", days_ago: int = 5) -> Transaction:
     return Transaction(
         date=date.today() - timedelta(days=days_ago),
         ticker=ticker,
         type=TransactionType.BUY,
         quantity=2,
         price=10,
-        currency=currency,
     )
 
 
 def test_failed_save_leaves_no_orphan_asset(service: PortfolioService) -> None:
-    with pytest.raises(ValueError, match="does not match"):
-        service.save_transaction(_buy(currency="USD"))
+    sell = Transaction(
+        date=date.today() - timedelta(days=2),
+        ticker="ABC",
+        type=TransactionType.SELL,
+        quantity=1,
+        price=10,
+    )
+    with pytest.raises(ValueError, match="negative"):
+        service.save_transaction(sell)
 
     assert assets_repo.get_assets(service.session) == []
     assert service.list_transactions() == []
-
-
-def test_save_rejects_currency_mismatch_with_stored_asset(service: PortfolioService) -> None:
-    service.save_transaction(_buy())
-    with pytest.raises(ValueError, match="Multiple currencies|does not match"):
-        service.save_transaction(_buy(currency="USD"))
-    assert len(service.list_transactions()) == 1
 
 
 def test_edit_and_delete_only_transaction(service: PortfolioService) -> None:
@@ -195,7 +191,7 @@ def test_dashboard_non_eur_asset_and_missing_fx(service: PortfolioService) -> No
             return super().get_history(ticker, start, end)
 
     service.provider = UsdProvider()
-    service.save_transaction(_buy("US1", "USD"))
+    service.save_transaction(_buy("US1"))
     service.refresh_prices()
     _, _, _, warnings = service.dashboard_data()
     assert any("cambio" in item for item in warnings)

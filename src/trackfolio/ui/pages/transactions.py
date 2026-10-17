@@ -55,6 +55,7 @@ else:
 session, service = service_context()
 try:
     existing = service.list_transactions()
+    currencies = service.asset_currencies()
     edit_id = st.selectbox(
         "Transazione da modificare o eliminare",
         [None, *[item.id for item in existing]],
@@ -96,20 +97,12 @@ try:
             ),
             format_func=lambda value: value.value,
         )
-        currency = (
-            row_one[3]
-            .text_input(
-                "Valuta",
-                value=(
-                    initial_asset.currency
-                    if initial_asset
-                    else (current.currency if current else "EUR")
-                ),
-                max_chars=3,
-            )
-            .strip()
-            .upper()
+        asset_currency = (
+            initial_asset.currency
+            if initial_asset and initial_asset.ticker == ticker
+            else currencies.get(ticker)
         )
+        row_one[3].text_input("Valuta", value=asset_currency or "n/d", disabled=True)
 
         row_two = st.columns(4)
         quantity = row_two[0].number_input(
@@ -149,7 +142,6 @@ try:
                     quantity=quantity,
                     price=unit_price,
                     fees=fees,
-                    currency=currency,
                     notes=notes.strip() or None,
                 )
                 service.save_transaction(
@@ -181,7 +173,7 @@ try:
                     "Quantità": item.quantity,
                     "Prezzo": item.price,
                     "Commissioni": item.fees,
-                    "Valuta": item.currency,
+                    "Valuta": currencies.get(item.ticker),
                     "Note": item.notes,
                 }
                 for item in existing

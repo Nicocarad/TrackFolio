@@ -165,14 +165,6 @@ def test_multiple_tickers_are_independent() -> None:
         )
 
 
-def test_mixed_currencies_per_ticker_are_rejected() -> None:
-    frame = pd.DataFrame(
-        [_tx("2025-01-01", "BUY", 1, currency="EUR"), _tx("2025-01-02", "BUY", 1, currency="USD")]
-    )
-    with pytest.raises(ValueError, match="currencies"):
-        calculate_positions(frame)
-
-
 @pytest.mark.parametrize("value", [np.int64(2), np.float64(2.5), Decimal("2.5")])
 def test_numeric_types_accepted(value: object) -> None:
     validate_transaction({**_tx("2025-01-01", "BUY", 1), "quantity": value}, pd.DataFrame())

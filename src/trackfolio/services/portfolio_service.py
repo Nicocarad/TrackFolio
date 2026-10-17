@@ -19,14 +19,6 @@ logger = logging.getLogger(__name__)
 REFRESH_OVERLAP_DAYS = 5
 
 
-def _check_currency(transaction: Transaction, asset: Asset) -> None:
-    if transaction.currency.upper() != asset.currency.upper():
-        raise ValueError(
-            f"Transaction currency {transaction.currency} does not match "
-            f"{transaction.ticker} currency {asset.currency}"
-        )
-
-
 class PortfolioService:
     """Application boundary used by the UI."""
 
@@ -56,10 +48,7 @@ class PortfolioService:
             known = assets.get_asset(self.session, transaction.ticker)
             if known is None:
                 known = asset or self.provider.get_asset(transaction.ticker)
-                _check_currency(transaction, known)
                 assets.save_asset(self.session, known)
-            else:
-                _check_currency(transaction, known)
             saved = transactions.save_transaction(self.session, transaction)
             self.session.commit()
         except Exception:
@@ -81,6 +70,10 @@ class PortfolioService:
         except Exception:
             self.session.rollback()
             raise
+
+    def asset_currencies(self) -> dict[str, str]:
+        """Map every known ticker to its currency."""
+        return {asset.ticker: asset.currency.upper() for asset in assets.get_assets(self.session)}
 
     def _assets_by_ticker(self) -> dict[str, Asset | None]:
         stored = {asset.ticker: asset for asset in assets.get_assets(self.session)}
@@ -173,7 +166,7 @@ class PortfolioService:
             ticker: asset.currency.upper() for ticker, asset in asset_map.items() if asset
         }
         try:
-            history = build_portfolio_timeseries(tx, price_frame, fx, asset_currencies)
+            history = build_portfolio_timeseries(tx, price_frame, asset_currencies, fx)
         except ValueError as error:
             warnings.append(str(error))
             return pd.DataFrame(), pd.DataFrame(), calculate_metrics(0, 0), warnings
