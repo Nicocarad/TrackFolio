@@ -43,7 +43,9 @@ Dependencies flow one way: `ui → services → core / repositories / market_dat
 | `BACKLOG.md`, `IMPROVEMENTS.md` | Open defects and design direction from code review |
 | `.claude/`, `CLAUDE.md` | Claude Code settings, hooks and project rules |
 
-The database is created at `data/trackfolio.db` (git-ignored), in WAL mode with foreign keys enforced. Tables created by older versions lack the `CHECK` constraints until migrations exist.
+The database is created at `data/trackfolio.db` (git-ignored), in WAL mode with foreign keys enforced. The schema is managed by Alembic (`src/trackfolio/migrations/`) and upgraded automatically at startup. A non-empty SQLite database is copied to `data/trackfolio.db.pre-migration-<timestamp>` before each migration. Set `TRACKFOLIO_DATABASE_URL` (e.g. `postgresql+psycopg://user:pass@host/db`) to use PostgreSQL instead of the local SQLite file.
+
+After changing `models.py`: `uv run alembic revision --autogenerate -m "<change>"`, review the file, then commit it.
 
 <details>
 <summary>Data model</summary>

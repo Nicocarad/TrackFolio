@@ -8,6 +8,7 @@ Local-first portfolio tracker: manual BUY/SELL entry, positions, EUR value histo
 - `uv run pytest`
 - `uv run ruff check . && uv run ruff format --check .`
 - `uv run mypy src`
+- `uv run alembic revision --autogenerate -m "<change>"` after editing `models.py`
 
 ## Rules
 - Layers: `ui -> services -> core / repositories / market_data`. The UI only calls `services/`; no business logic in the UI.

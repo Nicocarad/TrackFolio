@@ -8,7 +8,7 @@ Product roadmap: [README.md](README.md#roadmap).
 
 | ID | File | Problem | Fix |
 |----|------|---------|-----|
-| A12 | `models.py`, `core/` | `Transaction.currency` duplicates `Asset.currency` and allows mixed currencies per ticker. | Drop the field and derive the currency from the asset; add a dedicated settlement-currency field only if ever needed. |
+| A12 | `models.py`, `core/` | `Transaction.currency` duplicates `Asset.currency` and allows mixed currencies per ticker. | Drop the field with an Alembic migration and derive the currency from the asset; add a dedicated settlement-currency field only if ever needed. |
 
 ## B. Services and data
 
@@ -43,13 +43,12 @@ Most items are superseded by the FastAPI + HTMX migration (E1); fix only those t
 
 ## E. Multi-user hosted service
 
-Design in [IMPROVEMENTS.md](IMPROVEMENTS.md#2-hosted-multi-user-service). Order matters: E1 first, E3 before E4 and E5.
+Design in [IMPROVEMENTS.md](IMPROVEMENTS.md#2-hosted-multi-user-service). Order matters: E1 first, then E4 and E5.
 
 | ID | Item |
 |----|------|
 | E1 | Migrate UI to FastAPI + HTMX + Jinja under `src/trackfolio/web/`; remove Streamlit. |
 | E2 | Settings from environment variables (pydantic-settings). |
-| E3 | PostgreSQL support and Alembic migrations (also needed to add the `CHECK` constraints to databases created before they existed, and for A12). |
 | E4 | `user` table; `user_id` on `transaction`; `PortfolioService` scoped to a user. |
 | E5 | Authentication: argon2 password hashing, secure session cookies, CSRF protection, login/logout/register pages. |
 | E6 | Authorization tests proving cross-user isolation. |
