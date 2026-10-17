@@ -1,0 +1,65 @@
+<div class="toolbar">
+  <span class="muted">Ultimo prezzo in cache: {{ last_price_date or "mai" }} · dati salvati solo in locale</span>
+  <button hx-post="/refresh" hx-target="#dashboard" hx-swap="innerHTML" hx-disabled-elt="this">Aggiorna prezzi</button>
+</div>
+{% if notice %}<p class="msg ok" role="status">{{ notice }}</p>{% endif %}
+{% for warning in warnings %}<p class="msg warn" role="alert">{{ warning }}</p>{% endfor %}
+
+{% if empty %}
+  <p class="muted">Aggiungi una <a href="/transactions">transazione</a> per iniziare a monitorare il portafoglio.</p>
+{% else %}
+  <section class="cards">
+    <div><span>Valore totale</span><b>{{ metrics.total_value | eur }}</b></div>
+    <div><span>Capitale investito</span><b>{{ metrics.invested_capital | eur }}</b></div>
+    <div><span>Profitto / perdita</span><b>{{ metrics.profit_loss | eur }}</b></div>
+    <div><span>Rendimento</span><b>{{ metrics.return_pct | pct }}</b></div>
+    {% if metrics.twr_pct is not none %}<div><span>Rendimento TWR</span><b>{{ metrics.twr_pct | pct }}</b></div>{% endif %}
+    {% if metrics.xirr_pct is not none %}<div><span>XIRR annualizzato</span><b>{{ metrics.xirr_pct | pct }}</b></div>{% endif %}
+  </section>
+
+  <section class="charts">
+    <div><h2>Valore del portafoglio</h2><div id="value-chart"></div></div>
+    <div><h2>Allocazione</h2><div id="allocation-chart"></div></div>
+  </section>
+  <script>
+    (function () {
+      const value = {{ value_chart | tojson }};
+      const allocation = {{ allocation_chart | tojson }};
+      const layout = {margin: {t: 10, r: 10, b: 30, l: 50}, legend: {orientation: "h"},
+        paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+        font: {color: getComputedStyle(document.body).color}};
+      Plotly.newPlot("value-chart", [
+        {x: value.dates, y: value.value, name: "Valore", type: "scatter", mode: "lines"},
+        {x: value.dates, y: value.invested, name: "Capitale investito", type: "scatter", mode: "lines"}
+      ], layout, {responsive: true});
+      if (allocation) {
+        Plotly.newPlot("allocation-chart", [
+          {labels: allocation.labels, values: allocation.values, type: "pie", hole: 0.35}
+        ], layout, {responsive: true});
+      }
+    })();
+  </script>
+
+  <h2>Posizioni</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Titolo</th><th>Valuta</th><th class="n">Quantità</th><th class="n">PMC</th>
+        <th class="n">Prezzo</th><th class="n">Valore</th><th class="n">Valore (EUR)</th>
+        <th class="n">P/L</th><th class="n">P/L realizzato</th><th class="n">Dividendi netti</th>
+      </tr></thead>
+      <tbody>
+      {% for row in holdings %}
+        <tr>
+          <td title="{{ row.name }}">{{ row.ticker }}</td><td>{{ row.currency }}</td>
+          <td class="n">{{ row.quantity | num(4) }}</td><td class="n">{{ row.average_cost | num(4) }}</td>
+          <td class="n">{{ row.price | num(4) }}</td><td class="n">{{ row.value | num }}</td>
+          <td class="n">{{ row.value_eur | num }}</td><td class="n">{{ row.profit_loss | num }}</td>
+          <td class="n">{{ row.realized_pnl | num }}</td><td class="n">{{ row.dividends | num }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted">Importi nella valuta del titolo, salvo dove indicato EUR.</p>
+{% endif %}

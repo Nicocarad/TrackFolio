@@ -152,7 +152,9 @@ try:
                 )
                 service.save_transaction(
                     transaction,
-                    initial_asset if initial_asset and initial_asset.ticker == ticker else None,
+                    initial_asset.isin
+                    if initial_asset and initial_asset.ticker == ticker
+                    else None,
                 )
                 st.success("Transazione salvata.")
                 st.rerun()

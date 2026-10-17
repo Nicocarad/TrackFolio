@@ -10,18 +10,27 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.20.0",
+    "fastapi>=0.143.3",
+    "jinja2>=3.1.6",
     "numpy>=2.0",
     "pandas>=2.2",
     "plotly>=5.24",
     "psycopg[binary]>=3.3.6",
+    "python-multipart>=0.0.32",
     "python-stdnum>=1.20",
     "sqlmodel>=0.0.22",
     "streamlit>=1.40",
+    "uvicorn[standard]>=0.54.0",
     "yfinance>=0.2.50",
 ]
 
 [project.optional-dependencies]
-dev = ["mypy>=1.13", "pytest>=8.3", "ruff>=0.8"]
+dev = [
+    "httpx>=0.28.1",
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "ruff>=0.8",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/trackfolio"]
@@ -36,6 +45,9 @@ target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Form"]
 
 [tool.mypy]
 python_version = "3.14"

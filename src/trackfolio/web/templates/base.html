@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}TrackFolio{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/htmx.min.js"></script>
+  <script src="/static/plotly.min.js"></script>
+</head>
+<body>
+  <header>
+    <strong>TrackFolio</strong>
+    <nav>
+      <a href="/" {% if page == "dashboard" %}aria-current="page"{% endif %}>Dashboard</a>
+      <a href="/transactions" {% if page == "transactions" %}aria-current="page"{% endif %}>Transazioni</a>
+    </nav>
+  </header>
+  <main>{% block content %}{% endblock %}</main>
+</body>
+</html>

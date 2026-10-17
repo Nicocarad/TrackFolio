@@ -5,12 +5,14 @@ from datetime import date, timedelta
 
 import pandas as pd
 from sqlmodel import Session
+from stdnum import isin as stdnum_isin
 
 from trackfolio.core.holdings import build_holdings
 from trackfolio.core.metrics import PortfolioMetrics, calculate_metrics
 from trackfolio.core.positions import calculate_positions, validate_transaction
 from trackfolio.core.returns import twr_pct, xirr_pct
 from trackfolio.core.timeseries import build_portfolio_timeseries
+from trackfolio.market_data.instrument_search import search_isin, search_ticker
 from trackfolio.market_data.provider import PriceProvider
 from trackfolio.models import Asset, Transaction
 from trackfolio.repositories import assets, prices, transactions
@@ -30,11 +32,11 @@ class PortfolioService:
         """List all saved transactions."""
         return transactions.list_transactions(self.session)
 
-    def save_transaction(self, transaction: Transaction, asset: Asset | None = None) -> Transaction:
+    def save_transaction(self, transaction: Transaction, isin: str | None = None) -> Transaction:
         """Validate holdings and asset, then insert or update a transaction atomically.
 
-        ``asset`` is the instrument to register when the ticker is not stored yet; if omitted
-        it is fetched from the provider.
+        ``isin`` is recorded on the asset when the ticker is not stored yet (the provider
+        metadata does not carry it).
         """
         try:
             existing = transactions.list_transactions(self.session)
@@ -47,7 +49,9 @@ class PortfolioService:
             calculate_positions(pd.DataFrame(proposed))
             known = assets.get_asset(self.session, transaction.ticker)
             if known is None:
-                known = asset or self.provider.get_asset(transaction.ticker)
+                known = self.provider.get_asset(transaction.ticker)
+                if isin and stdnum_isin.is_valid(isin.upper()):
+                    known.isin = isin.upper()
                 assets.save_asset(self.session, known)
             saved = transactions.save_transaction(self.session, transaction)
             self.session.commit()
@@ -70,6 +74,17 @@ class PortfolioService:
         except Exception:
             self.session.rollback()
             raise
+
+    def last_price_date(self) -> date | None:
+        """Most recent cached market-data date."""
+        return prices.latest_price_date(self.session)
+
+    def search_instrument(self, query: str) -> list[Asset]:
+        """Find listings by ISIN (auto-detected) or ticker/name."""
+        normalized = query.strip()
+        if stdnum_isin.is_valid(normalized.upper()):
+            return search_isin(normalized, self.provider)
+        return search_ticker(normalized, self.provider)
 
     def asset_currencies(self) -> dict[str, str]:
         """Map every known ticker to its currency."""

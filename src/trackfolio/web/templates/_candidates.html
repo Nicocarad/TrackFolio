@@ -1,0 +1,11 @@
+{% if error %}<p class="msg warn" role="alert">{{ error }}</p>{% endif %}
+<ul class="candidates">
+{% for asset in candidates %}
+  <li>
+    <span>{{ asset.ticker }} — {{ asset.name }}
+      <span class="muted">({{ asset.exchange or "borsa n/d" }}, {{ asset.currency }})</span></span>
+    <button hx-get="/transactions/new" hx-target="#tx-area"
+            hx-vals='{{ {"ticker": asset.ticker, "isin": asset.isin or "", "currency": asset.currency} | tojson }}'>Usa</button>
+  </li>
+{% endfor %}
+</ul>

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Transazioni · TrackFolio{% endblock %}
+{% block content %}
+<h1>Transazioni</h1>
+<section>
+  <h2>Cerca titolo</h2>
+  <form class="grid" hx-get="/transactions/search" hx-target="#candidates" hx-disabled-elt="find button">
+    <label>ISIN o ticker/nome <input name="q" required></label>
+    <button>Cerca</button>
+  </form>
+  <div id="candidates" aria-live="polite"></div>
+</section>
+<div id="tx-area">{% include "_transactions_area.html" %}</div>
+{% endblock %}

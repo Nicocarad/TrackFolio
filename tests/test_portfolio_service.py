@@ -224,3 +224,18 @@ def test_dashboard_is_partial_when_one_ticker_has_no_price(service: PortfolioSer
     assert not history.empty
     assert list(holdings.index) == ["AAA"]
     assert any("BBB" in item for item in warnings)
+
+
+def test_edit_with_a_new_object_for_an_already_loaded_row(service: PortfolioService) -> None:
+    saved = service.save_transaction(_buy())
+    service.list_transactions()  # loads the row into the session
+    replacement = Transaction(
+        id=saved.id,
+        date=saved.date,
+        ticker="ABC",
+        type=TransactionType.BUY,
+        quantity=7,
+        price=10,
+    )
+    service.save_transaction(replacement)
+    assert [t.quantity for t in service.list_transactions()] == [7]

@@ -1,0 +1,58 @@
+{% if message %}<p class="msg ok" role="status">{{ message }}</p>{% endif %}
+{% if error %}<p class="msg warn" role="alert">{{ error }}</p>{% endif %}
+
+<h2>{{ "Modifica transazione" if current else "Nuova transazione" }}</h2>
+<form class="grid" hx-post="/transactions" hx-target="#tx-area" hx-disabled-elt="find button.primary">
+  <input type="hidden" name="id" value="{{ current.id if current and current.id else '' }}">
+  <input type="hidden" name="isin" value="{{ isin }}">
+  <label>Ticker <input name="ticker" value="{{ ticker }}" required></label>
+  <label>Data <input type="date" name="date" max="{{ today }}" value="{{ current.date if current else today }}" required></label>
+  <label>Tipo
+    <select name="type">
+      {% for value, label in types.items() %}
+        <option value="{{ value.value }}" {% if current and current.type == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Valuta <input value="{{ currency or 'n/d' }}" disabled></label>
+  <label>Quantità
+    <input type="number" name="quantity" step="any" min="0.000001" value="{{ current.quantity if current else 1 }}" required>
+  </label>
+  <label>Prezzo unitario
+    <input type="number" name="price" step="any" min="0" value="{{ current.price if current else 0 }}">
+  </label>
+  <label>Commissioni
+    <input type="number" name="fees" step="any" min="0" value="{{ current.fees if current else 0 }}">
+  </label>
+  <label>Note <input name="notes" value="{{ current.notes or '' if current else '' }}"></label>
+  <button class="primary">{{ "Salva modifiche" if current else "Aggiungi transazione" }}</button>
+  {% if current %}<button type="button" hx-get="/transactions/new" hx-target="#tx-area">Annulla</button>{% endif %}
+</form>
+<p class="muted">SPLIT: quantità = rapporto (2 = 2 per 1, 0.1 = raggruppamento 10 a 1), prezzo e commissioni 0.
+DIVIDEND: quantità = numero di titoli, prezzo = importo lordo per titolo, commissioni = ritenute.</p>
+
+<h2>Storico</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr>
+      <th>Data</th><th>Ticker</th><th>Tipo</th><th class="n">Quantità</th><th class="n">Prezzo</th>
+      <th class="n">Commissioni</th><th>Valuta</th><th>Note</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for t in transactions %}
+      <tr>
+        <td>{{ t.date }}</td><td>{{ t.ticker }}</td><td>{{ t.type.value }}</td>
+        <td class="n">{{ t.quantity | num(6) }}</td><td class="n">{{ t.price | num(4) }}</td>
+        <td class="n">{{ t.fees | num }}</td><td>{{ currencies.get(t.ticker, "") }}</td><td>{{ t.notes or "" }}</td>
+        <td>
+          <button hx-get="/transactions/{{ t.id }}/edit" hx-target="#tx-area">Modifica</button>
+          <button class="danger" hx-post="/transactions/{{ t.id }}/delete" hx-target="#tx-area"
+                  hx-confirm="Eliminare questa transazione?">Elimina</button>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="muted">Nessuna transazione.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
