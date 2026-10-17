@@ -1,7 +1,6 @@
 """ISIN validation and instrument lookup."""
 
 import json
-import os
 import time
 import urllib.error
 import urllib.request
@@ -9,12 +8,12 @@ from typing import Any
 
 from stdnum import isin
 
+from trackfolio.config import get_settings
 from trackfolio.errors import DomainError, ErrorCode
 from trackfolio.market_data.provider import PriceProvider
 from trackfolio.models import Asset
 
 OPENFIGI_URL = "https://api.openfigi.com/v3/mapping"
-API_KEY_ENV = "OPENFIGI_API_KEY"
 MAX_ATTEMPTS = 3
 MAX_RETRY_DELAY = 30.0
 _RETRY_STATUSES = {429, 500, 502, 503, 504}
@@ -37,7 +36,7 @@ def _retry_delay(error: urllib.error.HTTPError, attempt: int) -> float:
 def _post_openfigi(normalized: str) -> Any:
     """POST one ISIN mapping, retrying on 429/5xx. Raises URLError, HTTPError or ValueError."""
     headers = {"Content-Type": "application/json"}
-    api_key = os.environ.get(API_KEY_ENV)
+    api_key = get_settings().openfigi_api_key
     if api_key:
         headers["X-OPENFIGI-APIKEY"] = api_key
     body = json.dumps([{"idType": "ID_ISIN", "idValue": normalized}]).encode("utf-8")

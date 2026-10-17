@@ -14,7 +14,7 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import Engine, event, inspect
 from sqlmodel import Session, create_engine
 
-from trackfolio.config import DATA_DIR, DATABASE_URL
+from trackfolio.config import DATA_DIR, get_settings
 
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 BASELINE_REVISION = "0001"
@@ -38,12 +38,11 @@ def configure_engine(engine: Engine) -> Engine:
 @cache
 def get_engine() -> Engine:
     """Create the engine (and the SQLite data directory) on first use."""
-    if DATABASE_URL.startswith("sqlite"):
+    url = get_settings().database_url
+    if url.startswith("sqlite"):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        return configure_engine(
-            create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-        )
-    return create_engine(DATABASE_URL)
+        return configure_engine(create_engine(url, connect_args={"check_same_thread": False}))
+    return create_engine(url)
 
 
 def _alembic_config() -> Config:

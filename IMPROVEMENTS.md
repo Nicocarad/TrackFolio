@@ -15,7 +15,7 @@ The UI is a FastAPI app rendering Jinja templates, with HTMX for partial updates
 
 ## 2. Hosted multi-user service
 
-Builds on section 1; PostgreSQL support and Alembic migrations are already in place. Order matters: E4 before E5, E6 after both.
+Builds on section 1; PostgreSQL support, Alembic migrations and settings from the environment are already in place. Order matters: E4 before E5, E6 after both.
 
 ```mermaid
 flowchart LR
@@ -28,7 +28,6 @@ flowchart LR
 
 | ID | Area | Work |
 |----|------|------|
-| E2 | Configuration | Settings and secrets from environment variables (pydantic-settings); nothing in the repo. |
 | E4 | Data ownership | `user` table; `user_id` on `transaction` (and on future per-user tables); `asset` and `price` stay global and shared. `PortfolioService` takes the current user, every query filters by user, no global state. |
 | E5 | Authentication | Email + password with argon2 hashes, server-side sessions in secure cookies (or `fastapi-users`), login/logout/register pages; optional OIDC later. CSRF protection for HTMX forms. |
 | E6 | Authorization | Isolation tests: user A can never read or modify user B's data. |

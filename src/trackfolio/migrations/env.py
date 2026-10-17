@@ -5,7 +5,7 @@ from sqlalchemy import Connection
 from sqlmodel import SQLModel
 
 import trackfolio.models  # noqa: F401  (register tables on the metadata)
-from trackfolio.config import DATABASE_URL
+from trackfolio.config import get_settings
 from trackfolio.db import get_engine
 
 target_metadata = SQLModel.metadata
@@ -14,7 +14,7 @@ target_metadata = SQLModel.metadata
 def _configure(connection: Connection | None) -> None:
     context.configure(
         connection=connection,
-        url=DATABASE_URL,
+        url=get_settings().database_url,
         target_metadata=target_metadata,
         literal_binds=connection is None,
         render_as_batch=True,

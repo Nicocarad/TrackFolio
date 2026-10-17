@@ -85,3 +85,13 @@ def test_engine_enforces_foreign_keys_and_checks() -> None:
                     " VALUES ('2024-01-02', 'ABC', 'BUY', -1, 1, 0)"
                 )
             )
+
+
+def test_settings_read_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    from trackfolio.config import get_settings
+
+    monkeypatch.setenv("TRACKFOLIO_DATABASE_URL", "postgresql+psycopg://u:p@h/db")
+    monkeypatch.setenv("OPENFIGI_API_KEY", "k")
+    settings = get_settings()
+    assert settings.database_url == "postgresql+psycopg://u:p@h/db"
+    assert settings.openfigi_api_key == "k"

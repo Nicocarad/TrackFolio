@@ -43,7 +43,7 @@ Dependencies flow one way: `web → services → core / repositories / market_da
 | `IMPROVEMENTS.md` | Open work and design direction |
 | `.claude/`, `CLAUDE.md` | Claude Code settings, hooks and project rules |
 
-The database is created at `data/trackfolio.db` (git-ignored), in WAL mode with foreign keys enforced. The schema is managed by Alembic (`src/trackfolio/migrations/`) and upgraded automatically at startup. A non-empty SQLite database is copied to `data/trackfolio.db.pre-migration-<timestamp>` before each migration. Set `TRACKFOLIO_DATABASE_URL` (e.g. `postgresql+psycopg://user:pass@host/db`) to use PostgreSQL (12 or later) instead of the local SQLite file.
+The database is created at `data/trackfolio.db` (git-ignored), in WAL mode with foreign keys enforced. The schema is managed by Alembic (`src/trackfolio/migrations/`) and upgraded automatically at startup. A non-empty SQLite database is copied to `data/trackfolio.db.pre-migration-<timestamp>` before each migration. Settings are read from the environment or a git-ignored dotenv file in the project root (template: `.env.example`): `TRACKFOLIO_DATABASE_URL` (e.g. `postgresql+psycopg://user:pass@host/db`) selects PostgreSQL (12 or later) instead of the local SQLite file, `OPENFIGI_API_KEY` raises the OpenFIGI rate limit.
 
 After changing `models.py`: `uv run alembic revision --autogenerate -m "<change>"`, review the file, then commit it.
 
