@@ -15,8 +15,7 @@ def save_transaction(session: Session, transaction: Transaction) -> Transaction:
     """Insert or update a transaction."""
     transaction.ticker = transaction.ticker.upper()
     session.add(transaction)
-    session.commit()
-    session.refresh(transaction)
+    session.flush()
     return transaction
 
 
@@ -26,4 +25,3 @@ def delete_transaction(session: Session, transaction_id: int) -> None:
     if transaction is None:
         raise ValueError(f"Transaction {transaction_id} does not exist")
     session.delete(transaction)
-    session.commit()

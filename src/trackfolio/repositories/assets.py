@@ -19,6 +19,5 @@ def save_asset(session: Session, asset: Asset) -> Asset:
     """Insert or update an asset."""
     asset.ticker = asset.ticker.upper()
     session.add(asset)
-    session.commit()
-    session.refresh(asset)
+    session.flush()
     return asset

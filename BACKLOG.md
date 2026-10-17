@@ -17,19 +17,9 @@ Product roadmap: [README.md](README.md#roadmap).
 
 | ID | File | Problem | Fix |
 |----|------|---------|-----|
-| B1 | `services/portfolio_service.py`, `repositories/` | `save_asset` commits before `save_transaction`: a failed validation leaves an orphan asset. Each repository function commits on its own. | Repositories only `add`; the service commits once and rolls back on error. |
-| B2 | `services/portfolio_service.py` | `refresh_prices` catches only `ValueError`/`RuntimeError`/`TimeoutError`; other provider errors abort the whole refresh. | Catch `Exception` per ticker and log it. |
-| B4 | `services/portfolio_service.py` | Refresh always downloads from the first transaction date. | Fetch from the last cached date minus a few days. |
 | B5 | `market_data/instrument_search.py` | A lookup can make ~50 sequential requests; no result cache. | Cache results in the DB, build `Asset` from quote data. |
-| B8 | `services/portfolio_service.py` | Currency-mismatch check duplicated; `get_asset` called in loops (3 places). | `_check_currency` helper and `get_assets_by_ticker`. |
-| B9 | `services/portfolio_service.py` | One missing price or FX series hides the whole dashboard; `continue` on missing FX is dead code; leading NaN and zero rates not handled. | Return partial data with warnings; guard NaN/0. |
+| B9 | `services/portfolio_service.py` | A missing price or FX series hides the whole dashboard. | Return partial data with warnings. |
 | B10 | `db.py`, `config.py` | Engine and data dir created at import; no pragmas (WAL, busy timeout); no migrations; `BASE_CURRENCY` unused while "EUR" is hardcoded. | Lazy engine, pragmas, use `BASE_CURRENCY`, adopt migrations before the schema changes. |
-| B12 | `services/portfolio_service.py` | `dashboard_data` (~65 lines) builds holdings inside the service. | Move holdings assembly to `core/`. |
-
-Tests to add:
-- `refresh_prices`: provider failure with and without cache, no transactions.
-- `dashboard_data`: non-EUR asset, missing FX, missing price cache.
-- Save with a currency mismatch; edit with `transaction.id`; edit or delete the only transaction.
 
 ## C. UI
 
@@ -39,7 +29,6 @@ Most items are superseded by the FastAPI + HTMX migration (E1); fix only those t
 |----|------|---------|-----|
 | C1 | `ui/common.py`, `ui/pages/transactions.py` | `st.rerun()` right after refresh/save/delete discards success and warning messages. | Keep the outcome in `st.session_state` or use `st.toast` after the rerun. |
 | C2 | `ui/app.py` | With transactions but an empty price cache the dashboard says "add a transaction". | Say "refresh prices", or refresh automatically on empty cache. |
-| C3 | `ui/pages/transactions.py` | The asset is saved before the transaction is validated (see B1). | Pass the `Asset` to `save_transaction` and save it in the same unit of work. |
 | C4 | `ui/app.py` | Positions table lacks P/L % and EUR P/L; no number formatting. | Add columns in the service; use `column_config`. |
 | C5 | `ui/pages/transactions.py` | Delete without confirmation; selectbox instead of an editable table. | Row selection plus a confirmation dialog. |
 | C6 | `ui/pages/transactions.py` | A "search by" radio is needed because ISIN is not auto-detected; chosen candidate pre-fills via `value=` without `key`, so typed text can be lost; stale candidates survive after saving. | Auto-detect ISIN, use `key=` and session state, clear candidates on save, cache search with `st.cache_data`. |

@@ -1,16 +1,29 @@
 """Portfolio use cases coordinating persistence, market data, and pure calculations."""
 
+import logging
 from datetime import date, timedelta
 
 import pandas as pd
 from sqlmodel import Session
 
+from trackfolio.core.holdings import build_holdings
 from trackfolio.core.metrics import PortfolioMetrics, calculate_metrics
 from trackfolio.core.positions import calculate_positions, validate_transaction
 from trackfolio.core.timeseries import build_portfolio_timeseries
 from trackfolio.market_data.provider import PriceProvider
-from trackfolio.models import Transaction
+from trackfolio.models import Asset, Transaction
 from trackfolio.repositories import assets, prices, transactions
+
+logger = logging.getLogger(__name__)
+REFRESH_OVERLAP_DAYS = 5
+
+
+def _check_currency(transaction: Transaction, asset: Asset) -> None:
+    if transaction.currency.upper() != asset.currency.upper():
+        raise ValueError(
+            f"Transaction currency {transaction.currency} does not match "
+            f"{transaction.ticker} currency {asset.currency}"
+        )
 
 
 class PortfolioService:
@@ -24,31 +37,35 @@ class PortfolioService:
         """List all saved transactions."""
         return transactions.list_transactions(self.session)
 
-    def save_transaction(self, transaction: Transaction) -> Transaction:
-        """Validate holdings and asset, then insert or update a transaction."""
-        existing = transactions.list_transactions(self.session)
-        data = transaction.model_dump()
-        validate_transaction(
-            data, pd.DataFrame([item.model_dump() for item in existing]), transaction.id
-        )
-        proposed = [item.model_dump() for item in existing if item.id != transaction.id]
-        proposed.append(data)
-        calculate_positions(pd.DataFrame(proposed))
-        asset = assets.get_asset(self.session, transaction.ticker)
-        if asset is None:
-            asset = self.provider.get_asset(transaction.ticker)
-            if transaction.currency.upper() != asset.currency.upper():
-                raise ValueError(
-                    f"Transaction currency {transaction.currency} does not match "
-                    f"{transaction.ticker} currency {asset.currency}"
-                )
-            assets.save_asset(self.session, asset)
-        elif transaction.currency.upper() != asset.currency.upper():
-            raise ValueError(
-                f"Transaction currency {transaction.currency} does not match "
-                f"{transaction.ticker} currency {asset.currency}"
+    def save_transaction(self, transaction: Transaction, asset: Asset | None = None) -> Transaction:
+        """Validate holdings and asset, then insert or update a transaction atomically.
+
+        ``asset`` is the instrument to register when the ticker is not stored yet; if omitted
+        it is fetched from the provider.
+        """
+        try:
+            existing = transactions.list_transactions(self.session)
+            data = transaction.model_dump()
+            validate_transaction(
+                data, pd.DataFrame([item.model_dump() for item in existing]), transaction.id
             )
-        return transactions.save_transaction(self.session, transaction)
+            proposed = [item.model_dump() for item in existing if item.id != transaction.id]
+            proposed.append(data)
+            calculate_positions(pd.DataFrame(proposed))
+            known = assets.get_asset(self.session, transaction.ticker)
+            if known is None:
+                known = asset or self.provider.get_asset(transaction.ticker)
+                _check_currency(transaction, known)
+                assets.save_asset(self.session, known)
+            else:
+                _check_currency(transaction, known)
+            saved = transactions.save_transaction(self.session, transaction)
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise
+        self.session.refresh(saved)
+        return saved
 
     def delete_transaction(self, transaction_id: int) -> None:
         """Delete a transaction."""
@@ -57,7 +74,17 @@ class PortfolioService:
         if len(proposed) == len(current):
             raise ValueError(f"Transaction {transaction_id} does not exist")
         calculate_positions(pd.DataFrame(proposed))
-        transactions.delete_transaction(self.session, transaction_id)
+        try:
+            transactions.delete_transaction(self.session, transaction_id)
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise
+
+    def _assets_by_ticker(self) -> dict[str, Asset | None]:
+        stored = {asset.ticker: asset for asset in assets.get_assets(self.session)}
+        tickers = {item.ticker for item in transactions.list_transactions(self.session)}
+        return {ticker: stored.get(ticker) for ticker in tickers}
 
     def refresh_prices(self) -> tuple[int, list[str]]:
         """Refresh cached asset and FX prices, retaining cache on provider failures."""
@@ -65,20 +92,29 @@ class PortfolioService:
         if not all_transactions:
             return 0, []
         tickers = sorted({item.ticker for item in all_transactions})
-        asset_map = {ticker: assets.get_asset(self.session, ticker) for ticker in tickers}
+        asset_map = self._assets_by_ticker()
         currencies = {item.currency.upper() for item in asset_map.values() if item is not None}
         fx_tickers = [f"EUR{currency}=X" for currency in currencies if currency != "EUR"]
         requested = tickers + fx_tickers
-        start = min(item.date for item in all_transactions)
+        first_trade = min(item.date for item in all_transactions)
         end = date.today() + timedelta(days=1)
         warnings: list[str] = []
         saved = 0
         for ticker in requested:
             try:
+                cached = prices.get_prices(self.session, ticker)
+                start = first_trade
+                if not cached.empty and cached.index.min().date() <= first_trade + timedelta(
+                    days=7
+                ):
+                    start = cached.index.max().date() - timedelta(days=REFRESH_OVERLAP_DAYS)
                 history = self.provider.get_history(ticker, start, end)
                 prices.save_prices(self.session, ticker, history)
+                self.session.commit()
                 saved += len(history.dropna())
-            except (ValueError, RuntimeError, TimeoutError) as error:
+            except Exception as error:
+                self.session.rollback()
+                logger.warning("Price refresh failed for %s: %s", ticker, error)
                 cached = prices.get_prices(self.session, ticker)
                 if cached.empty:
                     warnings.append(f"{ticker}: aggiornamento fallito e cache assente ({error})")
@@ -99,7 +135,7 @@ class PortfolioService:
             return empty, empty, calculate_metrics(0, 0), []
 
         tx = pd.DataFrame([item.model_dump() for item in tx_models])
-        asset_map = {item.ticker: assets.get_asset(self.session, item.ticker) for item in tx_models}
+        asset_map = self._assets_by_ticker()
         tickers = sorted(set(tx["ticker"]))
         local_prices: dict[str, pd.Series] = {}
         warnings: list[str] = []
@@ -121,39 +157,19 @@ class PortfolioService:
             if cached.empty:
                 warnings.append(f"Nessun tasso di cambio in cache per {currency}/EUR")
                 continue
-            fx[currency] = 1 / cached.reindex(price_frame.index).ffill()
+            fx[currency] = 1 / cached.reindex(price_frame.index).ffill().replace(0, float("nan"))
         if warnings:
             return pd.DataFrame(), pd.DataFrame(), calculate_metrics(0, 0), warnings
         asset_currencies = {
             ticker: asset.currency.upper() for ticker, asset in asset_map.items() if asset
         }
-        history = build_portfolio_timeseries(tx, price_frame, fx, asset_currencies)
-        current = calculate_positions(tx)
-        current_rows = []
-        latest_date = price_frame.index.max()
-        for ticker, position in current.iterrows():
-            asset = asset_map[ticker]
-            currency = asset.currency.upper() if asset else "EUR"
-            latest_local_price = float(price_frame.loc[:latest_date, ticker].ffill().iloc[-1])
-            rate = float(fx.loc[:latest_date, currency].ffill().iloc[-1])
-            quantity = float(position["quantity"])
-            local_value = quantity * latest_local_price
-            current_rows.append(
-                {
-                    "ticker": ticker,
-                    "name": asset.name if asset else ticker,
-                    "currency": currency,
-                    "quantity": quantity,
-                    "average_cost": float(position["average_cost"]),
-                    "price": latest_local_price,
-                    "value": local_value,
-                    "value_eur": local_value * rate,
-                    "profit_loss": quantity
-                    * (latest_local_price - float(position["average_cost"])),
-                    "realized_pnl": float(position["realized_pnl"]),
-                }
-            )
-        holdings = pd.DataFrame(current_rows).set_index("ticker")
+        try:
+            history = build_portfolio_timeseries(tx, price_frame, fx, asset_currencies)
+        except ValueError as error:
+            warnings.append(str(error))
+            return pd.DataFrame(), pd.DataFrame(), calculate_metrics(0, 0), warnings
+        asset_info = {t: (a.name, a.currency.upper()) for t, a in asset_map.items() if a}
+        holdings = build_holdings(calculate_positions(tx), price_frame, fx, asset_info)
         latest = history.iloc[-1]
         metrics = calculate_metrics(float(latest["value"]), float(latest["invested_capital"]))
         return history, holdings, metrics, warnings

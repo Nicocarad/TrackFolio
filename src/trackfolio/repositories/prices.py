@@ -40,7 +40,6 @@ def save_prices(session: Session, ticker: str, prices: pd.Series) -> None:
             set_={"close": statement.excluded.close},
         )
         session.exec(statement, params=values)
-    session.commit()
 
 
 def latest_price_date(session: Session) -> date | None:

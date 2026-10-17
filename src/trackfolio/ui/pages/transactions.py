@@ -7,7 +7,7 @@ import streamlit as st
 from trackfolio.market_data.instrument_search import search_isin, search_ticker
 from trackfolio.market_data.yfinance_provider import YFinanceProvider
 from trackfolio.models import Asset, Transaction, TransactionType
-from trackfolio.repositories.assets import get_asset, save_asset
+from trackfolio.repositories.assets import get_asset
 from trackfolio.ui.common import initialize, service_context
 
 st.set_page_config(page_title="Transazioni | TrackFolio", layout="wide")
@@ -141,8 +141,6 @@ try:
 
         if submitted:
             try:
-                if initial_asset and initial_asset.ticker == ticker:
-                    save_asset(session, initial_asset)
                 transaction = Transaction(
                     id=current.id if current else None,
                     date=tx_date,
@@ -154,7 +152,10 @@ try:
                     currency=currency,
                     notes=notes.strip() or None,
                 )
-                service.save_transaction(transaction)
+                service.save_transaction(
+                    transaction,
+                    initial_asset if initial_asset and initial_asset.ticker == ticker else None,
+                )
                 st.success("Transazione salvata.")
                 st.rerun()
             except (ValueError, RuntimeError) as error:
