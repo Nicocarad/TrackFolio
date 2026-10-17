@@ -1,0 +1,22 @@
+[Unit]
+Description=TrackFolio HTTPS reverse proxy (Caddy)
+Requires=trackfolio-app.service
+After=trackfolio-app.service
+
+[Container]
+Image=docker.io/library/caddy:2
+ContainerName=trackfolio-caddy
+Network=trackfolio.network
+PublishPort=80:80
+PublishPort=443:443
+PublishPort=443:443/udp
+Volume=%h/trackfolio/Caddyfile:/etc/caddy/Caddyfile:ro,Z
+Volume=trackfolio-caddy-data.volume:/data
+Volume=trackfolio-caddy-config.volume:/config
+EnvironmentFile=%h/trackfolio/caddy.env
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

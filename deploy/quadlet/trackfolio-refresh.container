@@ -1,0 +1,19 @@
+[Unit]
+Description=TrackFolio shared price refresh
+Requires=trackfolio-db.service
+After=trackfolio-db.service
+
+[Container]
+Image=localhost/trackfolio:latest
+ContainerName=trackfolio-refresh
+Network=trackfolio.network
+EnvironmentFile=%h/trackfolio/app.env
+Exec=trackfolio refresh-prices
+ReadOnly=true
+Environment=XDG_CACHE_HOME=/tmp
+Tmpfs=/tmp
+NoNewPrivileges=true
+DropCapability=ALL
+
+[Service]
+Type=oneshot

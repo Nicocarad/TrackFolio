@@ -1,0 +1,25 @@
+# Public HTTPS entry point. {$TRACKFOLIO_DOMAIN} and {$TRACKFOLIO_ACME_EMAIL} come from the
+# caddy environment file in ~/trackfolio; certificates are obtained and renewed automatically.
+{
+	email {$TRACKFOLIO_ACME_EMAIL}
+}
+
+{$TRACKFOLIO_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+		# Scripts and styles stay unrestricted because pages use inline scripts and Plotly.
+		Content-Security-Policy "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+		-Server
+	}
+
+	request_body {
+		max_size 1MB
+	}
+
+	# Caddy keeps the original Host header, which the app's origin check relies on.
+	reverse_proxy trackfolio-app:8000
+}

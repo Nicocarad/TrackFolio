@@ -4,7 +4,8 @@ from datetime import date
 
 import pandas as pd
 from sqlalchemy import func
-from sqlalchemy.dialects.sqlite import insert
+from sqlalchemy.dialects import postgresql, sqlite
+from sqlalchemy.sql.dml import Insert
 from sqlmodel import Session, col, select
 
 from trackfolio.models import Price
@@ -22,6 +23,16 @@ def get_prices(session: Session, ticker: str) -> pd.Series:
     )
 
 
+def upsert_statement(dialect_name: str) -> Insert:
+    """INSERT ... ON CONFLICT DO UPDATE on (ticker, date) for SQLite or PostgreSQL."""
+    insert = postgresql.insert if dialect_name == "postgresql" else sqlite.insert
+    statement = insert(Price)
+    return statement.on_conflict_do_update(
+        index_elements=["ticker", "date"],
+        set_={"close": statement.excluded.close},
+    )
+
+
 def save_prices(session: Session, ticker: str, prices: pd.Series) -> None:
     """Insert or update daily closes in one bulk upsert."""
     ticker = ticker.upper()
@@ -34,12 +45,7 @@ def save_prices(session: Session, ticker: str, prices: pd.Series) -> None:
         for timestamp, close in prices.dropna().items()
     ]
     if values:
-        statement = insert(Price)
-        statement = statement.on_conflict_do_update(
-            index_elements=["ticker", "date"],
-            set_={"close": statement.excluded.close},
-        )
-        session.exec(statement, params=values)
+        session.exec(upsert_statement(session.get_bind().dialect.name), params=values)
 
 
 def latest_price_date(session: Session) -> date | None:

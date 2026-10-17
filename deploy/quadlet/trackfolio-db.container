@@ -1,0 +1,20 @@
+[Unit]
+Description=TrackFolio PostgreSQL
+
+[Container]
+Image=docker.io/library/postgres:17-alpine
+ContainerName=trackfolio-db
+Network=trackfolio.network
+Volume=trackfolio-db.volume:/var/lib/postgresql/data
+EnvironmentFile=%h/trackfolio/db.env
+HealthCmd=pg_isready -h 127.0.0.1 -U trackfolio -d trackfolio
+HealthInterval=10s
+HealthRetries=6
+Notify=healthy
+
+[Service]
+Restart=always
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target

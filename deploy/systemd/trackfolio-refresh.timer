@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh TrackFolio prices while European and US markets are open
+
+[Timer]
+# Every 15 minutes on weekdays from 09:00 to 22:15 Europe/Rome; no refresh otherwise.
+OnCalendar=Mon..Fri *-*-* 09..21:00/15:00 Europe/Rome
+OnCalendar=Mon..Fri *-*-* 22:00,15:00 Europe/Rome
+Persistent=false
+Unit=trackfolio-refresh.service
+
+[Install]
+WantedBy=timers.target

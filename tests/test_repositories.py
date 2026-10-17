@@ -3,11 +3,14 @@ from datetime import date
 
 import pandas as pd
 import pytest
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
+from trackfolio.config import get_settings
 from trackfolio.models import Asset
 from trackfolio.repositories import assets, prices
+from trackfolio.repositories.prices import upsert_statement
 
 
 @pytest.fixture
@@ -88,10 +91,26 @@ def test_engine_enforces_foreign_keys_and_checks() -> None:
 
 
 def test_settings_read_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    from trackfolio.config import get_settings
-
     monkeypatch.setenv("TRACKFOLIO_DATABASE_URL", "postgresql+psycopg://u:p@h/db")
     monkeypatch.setenv("OPENFIGI_API_KEY", "k")
     settings = get_settings()
     assert settings.database_url == "postgresql+psycopg://u:p@h/db"
     assert settings.openfigi_api_key == "k"
+
+
+def test_price_upsert_is_dialect_aware() -> None:
+    pg = str(upsert_statement("postgresql").compile(dialect=postgresql.dialect()))
+    lite = str(upsert_statement("sqlite").compile(dialect=sqlite.dialect()))
+    for sql in (pg, lite):
+        assert "ON CONFLICT (ticker, date) DO UPDATE SET close = excluded.close" in sql
+
+
+def test_database_errors_do_not_expose_parameters() -> None:
+    from sqlalchemy.exc import IntegrityError
+
+    engine = create_engine("sqlite://", hide_parameters=True)
+    with engine.connect() as connection:
+        connection.exec_driver_sql("CREATE TABLE t (x INTEGER CHECK (x > 0))")
+        with pytest.raises(IntegrityError) as error:
+            connection.exec_driver_sql("INSERT INTO t VALUES (?)", (-123456,))
+    assert "123456" not in str(error.value)

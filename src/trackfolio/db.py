@@ -41,8 +41,10 @@ def get_engine() -> Engine:
     url = get_settings().database_url
     if url.startswith("sqlite"):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        return configure_engine(create_engine(url, connect_args={"check_same_thread": False}))
-    return create_engine(url)
+        return configure_engine(
+            create_engine(url, connect_args={"check_same_thread": False}, hide_parameters=True)
+        )
+    return create_engine(url, hide_parameters=True)
 
 
 def _alembic_config() -> Config:

@@ -90,6 +90,28 @@ FX series are stored in `price` under their Yahoo ticker.
 
 </details>
 
+## Deployment
+
+`deploy/setup.sh` provisions a fresh Oracle Linux 10 host (x86_64 or aarch64) as root; everything then runs rootless as the user `trackfolio`:
+
+```bash
+sudo TRACKFOLIO_DOMAIN=trackfolio.example.com TRACKFOLIO_ACME_EMAIL=you@example.com bash deploy/setup.sh
+```
+
+| Piece | Where | Notes |
+|-------|-------|-------|
+| App image | `Containerfile` | Built on the host; runs read-only, no capabilities, as an unprivileged user |
+| PostgreSQL 17, app, Caddy | `deploy/quadlet/` | Podman Quadlets on a private network; only Caddy publishes 80/443 |
+| HTTPS | `deploy/Caddyfile` | Automatic certificates for `$TRACKFOLIO_DOMAIN`; security headers, 1 MB body limit |
+| Price refresh | `deploy/systemd/trackfolio-refresh.timer` | `trackfolio refresh-prices` every 15 minutes, weekdays 09:00-22:15 Europe/Rome |
+| Secrets | `~trackfolio/trackfolio/*.env` (mode 600) | Generated on first run, never overwritten, never printed |
+| Health and logs | `GET /health`, stdout | JSON lines with method, path (no query string), status and duration only |
+
+Re-run the script to deploy new code. After it finishes, point a DNS A record at the host, open ports 80/443 (tcp) and 443 (udp) in the cloud network security list, and create the first administrator as the script prints.
+
+> [!NOTE]
+> Verified locally: image build, Quadlet generation, Caddyfile validation, and the app against PostgreSQL (login, transactions, price refresh, health). Not verified: `deploy/setup.sh` itself on a real Oracle Linux 10 host, Let's Encrypt issuance, and the pages and charts in a browser behind Caddy. `net.ipv4.ip_unprivileged_port_start=80` lets any local user bind ports 80 and above, which is acceptable on a single-purpose host. There is no backup yet: the database lives in the `trackfolio-db` volume only.
+
 ## Known limits
 
 - Dividends are entered by hand; there is no automatic reinvestment, withholding tax logic or foreign-currency payout.

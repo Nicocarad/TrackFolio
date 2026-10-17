@@ -201,3 +201,8 @@ def test_relogin_drops_the_previous_session(alice: TestClient, engine: Engine) -
     alice.post("/login", data={"email": "alice@example.com", "password": PASSWORD})
     with Session(engine) as session:
         assert len(session.exec(select(UserSession)).all()) == 1
+
+
+def test_health_is_public_and_reports_the_database(anonymous: TestClient) -> None:
+    response = anonymous.get("/health")
+    assert (response.status_code, response.json()) == (200, {"status": "ok"})
