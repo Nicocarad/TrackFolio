@@ -8,13 +8,17 @@
   <script src="/static/htmx.min.js"></script>
   <script src="/static/plotly.min.js"></script>
 </head>
-<body>
+<body hx-headers='{{ {"X-CSRF-Token": csrf_token} | tojson }}'>
   <header>
     <strong>TrackFolio</strong>
+    {% if user_email %}
     <nav>
       <a href="/" {% if page == "dashboard" %}aria-current="page"{% endif %}>Dashboard</a>
       <a href="/transactions" {% if page == "transactions" %}aria-current="page"{% endif %}>Transazioni</a>
     </nav>
+    <span class="muted user">{{ user_email }}</span>
+    <button hx-post="/logout">Esci</button>
+    {% endif %}
   </header>
   <main>{% block content %}{% endblock %}</main>
 </body>

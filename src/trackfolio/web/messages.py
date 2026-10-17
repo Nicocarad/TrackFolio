@@ -34,6 +34,10 @@ ERRORS_IT: dict[ErrorCode, str] = {
     ErrorCode.EMPTY_QUERY: "Inserisci un ISIN, un ticker o un nome.",
     ErrorCode.UNKNOWN_TICKER: "Yahoo Finance non riconosce il ticker {ticker}.",
     ErrorCode.NO_HISTORY: "Nessuna storia dei prezzi disponibile per {ticker}.",
+    ErrorCode.EMAIL_INVALID: "Indirizzo email non valido.",
+    ErrorCode.EMAIL_TAKEN: "Esiste già un utente con email {email}.",
+    ErrorCode.PASSWORD_TOO_SHORT: "La password deve avere almeno {minimum} caratteri.",
+    ErrorCode.USER_NOT_FOUND: "Nessun utente con email {email}.",
 }
 
 

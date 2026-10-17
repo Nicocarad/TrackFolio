@@ -27,6 +27,18 @@ class User(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+class UserSession(SQLModel, table=True):
+    """A login session; only the SHA-256 of the cookie token is stored."""
+
+    __tablename__ = "user_session"
+
+    token_hash: str = Field(primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True, ondelete="CASCADE")
+    csrf_token: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    expires_at: datetime
+
+
 class Asset(SQLModel, table=True):
     """A tradable instrument identified by its provider ticker."""
 

@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Accesso · TrackFolio{% endblock %}
+{% block content %}
+<h1>Accesso</h1>
+{% if error %}<p class="msg warn" role="alert">{{ error }}</p>{% endif %}
+<form class="grid" method="post" action="/login">
+  <label>Email <input type="email" name="email" autocomplete="username" required autofocus></label>
+  <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
+  <button class="primary">Accedi</button>
+</form>
+{% endblock %}

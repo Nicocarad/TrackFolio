@@ -8,10 +8,22 @@ Requires Python 3.14+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync --extra dev
-uv run uvicorn trackfolio.web.app:app
+uv run trackfolio create-user you@example.com --admin   # asks for a password (12+ characters)
+TRACKFOLIO_SECURE_COOKIES=false uv run uvicorn trackfolio.web.app:app
 ```
 
-Open <http://127.0.0.1:8000>. Add `--reload` while developing.
+Open <http://127.0.0.1:8000> and log in. `TRACKFOLIO_SECURE_COOKIES=false` is only for plain-HTTP development; behind HTTPS leave it unset (cookies are `Secure` by default). Add `--reload` while developing.
+
+Accounts are created by an admin from the command line; there is no registration page:
+
+| Command | Effect |
+|---------|--------|
+| `trackfolio create-user EMAIL [--admin] [--password-stdin]` | Create an account |
+| `trackfolio set-password EMAIL` | Reset a password and end the user's sessions |
+| `trackfolio change-email OLD NEW` | Change an email |
+| `trackfolio list-users` | List accounts |
+
+Databases that already contain transactions get a placeholder admin `admin@trackfolio.local` that owns them and cannot log in: run `trackfolio set-password admin@trackfolio.local`, then `trackfolio change-email admin@trackfolio.local you@example.com`.
 
 | Route | Purpose |
 |-------|---------|
@@ -43,7 +55,7 @@ Dependencies flow one way: `web → services → core / repositories / market_da
 | `IMPROVEMENTS.md` | Open work and design direction |
 | `.claude/`, `CLAUDE.md` | Claude Code settings, hooks and project rules |
 
-The database is created at `data/trackfolio.db` (git-ignored), in WAL mode with foreign keys enforced. The schema is managed by Alembic (`src/trackfolio/migrations/`) and upgraded automatically at startup. A non-empty SQLite database is copied to `data/trackfolio.db.pre-migration-<timestamp>` before each migration. Settings are read from the environment or a git-ignored dotenv file in the project root (template: `.env.example`): `TRACKFOLIO_DATABASE_URL` (e.g. `postgresql+psycopg://user:pass@host/db`) selects PostgreSQL (12 or later) instead of the local SQLite file, `OPENFIGI_API_KEY` raises the OpenFIGI rate limit.
+The database is created at `data/trackfolio.db` (git-ignored), in WAL mode with foreign keys enforced. The schema is managed by Alembic (`src/trackfolio/migrations/`) and upgraded automatically at startup. A non-empty SQLite database is copied to `data/trackfolio.db.pre-migration-<timestamp>` before each migration. Settings are read from the environment or a git-ignored dotenv file in the project root (template: `.env.example`): `TRACKFOLIO_DATABASE_URL` (e.g. `postgresql+psycopg://user:pass@host/db`) selects PostgreSQL (12 or later) instead of the local SQLite file, `OPENFIGI_API_KEY` raises the OpenFIGI rate limit, `TRACKFOLIO_SECURE_COOKIES` (default true) and `TRACKFOLIO_SESSION_DAYS` (default 14) control the login cookie.
 
 After changing `models.py`: `uv run alembic revision --autogenerate -m "<change>"`, review the file, then commit it.
 

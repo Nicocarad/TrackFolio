@@ -6,10 +6,10 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
 from trackfolio.services.portfolio_service import PortfolioService
-from trackfolio.web.deps import get_service
+from trackfolio.web.deps import get_service, require_csrf
 from trackfolio.web.routes.templating import templates
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_csrf)])
 
 
 def _context(service: PortfolioService, notice: str | None = None) -> dict[str, Any]:

@@ -29,6 +29,10 @@ class ErrorCode(StrEnum):
     EMPTY_QUERY = "empty_query"
     UNKNOWN_TICKER = "unknown_ticker"
     NO_HISTORY = "no_history"
+    EMAIL_INVALID = "email_invalid"
+    EMAIL_TAKEN = "email_taken"
+    PASSWORD_TOO_SHORT = "password_too_short"
+    USER_NOT_FOUND = "user_not_found"
 
 
 MESSAGES: dict[ErrorCode, str] = {
@@ -58,6 +62,10 @@ MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.EMPTY_QUERY: "Enter an ISIN or ticker",
     ErrorCode.UNKNOWN_TICKER: "Yahoo Finance does not recognize ticker {ticker}",
     ErrorCode.NO_HISTORY: "No price history returned for {ticker}",
+    ErrorCode.EMAIL_INVALID: "Invalid email address",
+    ErrorCode.EMAIL_TAKEN: "A user with email {email} already exists",
+    ErrorCode.PASSWORD_TOO_SHORT: "Password must be at least {minimum} characters",
+    ErrorCode.USER_NOT_FOUND: "No user with email {email}",
 }
 
 

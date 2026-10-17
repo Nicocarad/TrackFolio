@@ -28,7 +28,7 @@ def upgrade() -> None:
         sa.Column("date", sa.Date(), nullable=False),
         sa.Column("close", sa.Float(), nullable=False),
         sa.Column("source", sa.String(), nullable=False),
-        sa.Column("fetched_at", sa.DateTime(), nullable=False),
+        sa.Column("fetched_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("ticker", "date"),
     )
     op.create_table(

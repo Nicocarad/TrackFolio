@@ -20,6 +20,8 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("OPENFIGI_API_KEY", "TRACKFOLIO_OPENFIGI_API_KEY"),
     )
+    secure_cookies: bool = True  # only turn off for plain-HTTP development
+    session_days: int = 14
 
 
 def get_settings() -> Settings:

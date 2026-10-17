@@ -4,48 +4,14 @@ from datetime import date, timedelta
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, SQLModel, create_engine
+from helpers import FakeProvider, memory_engine, open_client
 
-from trackfolio.models import Asset, User
-from trackfolio.web.app import create_app
-from trackfolio.web.deps import get_db, get_provider
-
-
-class FakeProvider:
-    def get_history(self, ticker: str, start: date, end: date) -> pd.Series:
-        dates = pd.bdate_range(start=start, end=end - timedelta(days=1))
-        return pd.Series([10.0 + i for i in range(len(dates))], index=dates, name=ticker)
-
-    def get_asset(self, ticker: str) -> Asset:
-        return Asset(ticker=ticker, name=f"{ticker} Inc", currency="EUR")
-
-    def search_tickers(self, query: str) -> list[Asset]:
-        if query.upper() == "NONE":
-            return []
-        return [self.get_asset(query.upper())]
+from trackfolio.web.deps import get_provider
 
 
 @pytest.fixture
 def client() -> Generator[TestClient]:
-    engine = create_engine(
-        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
-    )
-    SQLModel.metadata.create_all(engine)
-
-    with Session(engine) as session:
-        session.add(User(email="a@example.com", password_hash="x"))
-        session.commit()
-
-    def override_db() -> Generator[Session]:
-        with Session(engine) as session:
-            yield session
-
-    app = create_app(migrate=False)
-    app.dependency_overrides[get_db] = override_db
-    app.dependency_overrides[get_provider] = lambda: FakeProvider()
-    with TestClient(app) as test_client:
-        yield test_client
+    yield from open_client(memory_engine(), "a@example.com")
 
 
 def _form(**overrides: str) -> dict[str, str]:

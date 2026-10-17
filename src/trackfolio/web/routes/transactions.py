@@ -9,12 +9,12 @@ from fastapi.responses import HTMLResponse
 
 from trackfolio.models import Transaction, TransactionType
 from trackfolio.services.portfolio_service import PortfolioService
-from trackfolio.web.deps import get_service
+from trackfolio.web.deps import get_service, require_csrf
 from trackfolio.web.messages import error_text
 from trackfolio.web.routes.templating import templates
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_csrf)])
 
 TYPE_LABELS = {
     TransactionType.BUY: "BUY",

@@ -7,6 +7,7 @@
 body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
 header { display: flex; gap: 2rem; align-items: center; padding: .75rem 1rem; border-bottom: 1px solid var(--line); }
 nav { display: flex; gap: 1rem; }
+header .user { margin-left: auto; }
 nav a { color: var(--muted); text-decoration: none; }
 nav a[aria-current] { color: var(--fg); font-weight: 600; }
 main { max-width: 1200px; margin: 0 auto; padding: 1rem; }

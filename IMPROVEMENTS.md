@@ -15,7 +15,7 @@ The UI is a FastAPI app rendering Jinja templates, with HTMX for partial updates
 
 ## 2. Hosted multi-user service
 
-Builds on section 1; PostgreSQL support, Alembic migrations and settings from the environment are already in place. Order matters: E4 before E5, E6 after both.
+Builds on section 1; PostgreSQL support, Alembic migrations and settings from the environment are already in place. Done: settings from the environment, users owning their data, login with argon2 and server-side sessions, CSRF protection, cross-user isolation tests.
 
 ```mermaid
 flowchart LR
@@ -28,12 +28,9 @@ flowchart LR
 
 | ID | Area | Work |
 |----|------|------|
-| E4 | Data ownership | `user` table; `user_id` on `transaction` (and on future per-user tables); `asset` and `price` stay global and shared. `PortfolioService` takes the current user, every query filters by user, no global state. |
-| E5 | Authentication | Email + password with argon2 hashes, server-side sessions in secure cookies (or `fastapi-users`), login/logout/register pages; optional OIDC later. CSRF protection for HTMX forms. |
-| E6 | Authorization | Isolation tests: user A can never read or modify user B's data. |
 | E7 | Prices | Scheduled job refreshes shared prices for all held tickers; users never trigger provider calls, so the per-user refresh button goes away. |
 | E8 | Market data | Free yfinance is unsuitable for a public service (rate limits, terms of use): put a paid provider behind `PriceProvider`. |
-| E9 | Instrument search | Rate limiting on auth and search; persistent global cache for search results (metadata is cached in memory per process today). |
+| E9 | Abuse protection | Rate limiting on login (none today: every attempt costs an argon2 verification and can be brute-forced) and on instrument search; persistent global cache for search results (metadata is cached in memory per process today). Behind a proxy, `Host` must be preserved because the origin check compares it. |
 | E10 | Deployment | Container image, reverse proxy with HTTPS, health endpoint, structured logging without financial data. |
 | E11 | Privacy | Account and data deletion; backup and restore procedure. |
 

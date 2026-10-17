@@ -41,6 +41,8 @@ def test_every_error_code_has_an_italian_text_and_formats() -> None:
         "types": "X",
         "tickers": "ABC",
         "currencies": "USD",
+        "email": "a@example.com",
+        "minimum": 12,
     }
     for code in ErrorCode:
         error = DomainError(code, **params)

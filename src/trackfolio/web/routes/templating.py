@@ -2,11 +2,23 @@
 
 from pathlib import Path
 
+from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
 from trackfolio.web.messages import warning_text
 
-templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
+
+def _auth_context(request: Request) -> dict[str, str]:
+    """Expose the CSRF token and email set by the authentication dependency."""
+    return {
+        "csrf_token": getattr(request.state, "csrf_token", ""),
+        "user_email": getattr(request.state, "user_email", ""),
+    }
+
+
+templates = Jinja2Templates(
+    directory=Path(__file__).parent.parent / "templates", context_processors=[_auth_context]
+)
 
 
 def _number(value: float | None, digits: int = 2) -> str:

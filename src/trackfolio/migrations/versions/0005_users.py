@@ -25,7 +25,7 @@ def upgrade() -> None:
         sa.Column("email", sa.String(), nullable=False),
         sa.Column("password_hash", sa.String(), nullable=False),
         sa.Column("is_admin", sa.Boolean(), nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_user_email", "user", ["email"], unique=True)
@@ -37,14 +37,14 @@ def upgrade() -> None:
         insert = sa.text(
             'INSERT INTO "user" (email, password_hash, is_admin, created_at) '
             "VALUES (:email, :hash, :admin, :now)"
-        ).bindparams(sa.bindparam("now", type_=sa.DateTime()))
+        ).bindparams(sa.bindparam("now", type_=sa.DateTime(timezone=True)))
         bind.execute(
             insert,
             {
                 "email": PLACEHOLDER_EMAIL,
                 "hash": UNUSABLE_HASH,
                 "admin": True,
-                "now": datetime.now(UTC).replace(tzinfo=None),
+                "now": datetime.now(UTC),
             },
         )
         bind.execute(
