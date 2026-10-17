@@ -10,11 +10,6 @@ Product roadmap: [README.md](README.md#roadmap).
 |----|------|---------|-----|
 | A12 | `models.py`, `core/` | `Transaction.currency` duplicates `Asset.currency` and allows mixed currencies per ticker. | Drop the field with an Alembic migration and derive the currency from the asset; add a dedicated settlement-currency field only if ever needed. |
 
-## B. Services and data
-
-| ID | File | Problem | Fix |
-|----|------|---------|-----|
-
 ## C. UI
 
 Most items are superseded by the FastAPI + HTMX migration (E1); fix only those that survive it. All items are **verify**: line references are unverified.
