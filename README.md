@@ -8,15 +8,15 @@ Requires Python 3.14+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync --extra dev
-uv run streamlit run src/trackfolio/ui/app.py
+uv run uvicorn trackfolio.web.app:app
 ```
 
-Open the local URL Streamlit prints.
+Open <http://127.0.0.1:8000>. Add `--reload` while developing.
 
-| Page | Purpose |
-|------|---------|
-| Transazioni | Search an instrument by ISIN or ticker, pick a listing, add / edit / delete transactions |
-| TrackFolio | KPIs, positions, allocation, value vs. invested capital; **Aggiorna prezzi** refreshes the price cache |
+| Route | Purpose |
+|-------|---------|
+| `/transactions` | Search an instrument by ISIN or ticker, pick a listing, add / edit / delete transactions |
+| `/` | KPIs, positions, allocation, value vs. invested capital; **Aggiorna prezzi** refreshes the price cache |
 
 Checks: `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy src`.
 
@@ -30,7 +30,7 @@ Checks: `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`, 
 
 ## Architecture
 
-Dependencies flow one way: `ui → services → core / repositories / market_data`.
+Dependencies flow one way: `web → services → core / repositories / market_data`.
 
 | Path | Role |
 |------|------|
@@ -38,7 +38,7 @@ Dependencies flow one way: `ui → services → core / repositories / market_dat
 | `src/trackfolio/market_data/` | `PriceProvider` interface, Yahoo Finance provider, ISIN/ticker search |
 | `src/trackfolio/repositories/` | SQLite persistence for assets, transactions, prices |
 | `src/trackfolio/services/` | `PortfolioService`: orchestrates DB, providers and `core` |
-| `src/trackfolio/ui/` | Streamlit app and pages; calls `services/` only |
+| `src/trackfolio/web/` | FastAPI app: Jinja templates and HTMX fragments; routes call `services/` only. Plotly is served from the installed package, HTMX is vendored in `static/` |
 | `tests/` | Unit tests with hand-computed values; network is mocked |
 | `BACKLOG.md`, `IMPROVEMENTS.md` | Open defects and design direction from code review |
 | `.claude/`, `CLAUDE.md` | Claude Code settings, hooks and project rules |

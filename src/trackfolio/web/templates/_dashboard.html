@@ -6,7 +6,11 @@
 {% for warning in warnings %}<p class="msg warn" role="alert">{{ warning }}</p>{% endfor %}
 
 {% if empty %}
-  <p class="muted">Aggiungi una <a href="/transactions">transazione</a> per iniziare a monitorare il portafoglio.</p>
+  {% if warnings %}
+    <p class="muted">Premi «Aggiorna prezzi» per scaricare i prezzi mancanti.</p>
+  {% else %}
+    <p class="muted">Aggiungi una <a href="/transactions">transazione</a> per iniziare a monitorare il portafoglio.</p>
+  {% endif %}
 {% else %}
   <section class="cards">
     <div><span>Valore totale</span><b>{{ metrics.total_value | eur }}</b></div>

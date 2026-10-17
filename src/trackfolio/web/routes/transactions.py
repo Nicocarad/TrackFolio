@@ -1,5 +1,6 @@
 """Transaction list, entry, editing, deletion and instrument search."""
 
+import logging
 from datetime import date
 from typing import Any
 
@@ -11,6 +12,7 @@ from trackfolio.services.portfolio_service import PortfolioService
 from trackfolio.web.deps import get_service
 from trackfolio.web.routes.templating import templates
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 TYPE_LABELS = {
@@ -106,28 +108,37 @@ def save(
     ticker: str = Form(),
     type: TransactionType = Form(),
     quantity: float = Form(),
-    price: float = Form(0.0),
-    fees: float = Form(0.0),
+    price: str = Form("0"),
+    fees: str = Form("0"),
     notes: str = Form(""),
     transaction_id: str = Form("", alias="id"),
     isin: str = Form(""),
     service: PortfolioService = Depends(get_service),
 ) -> Any:
     """Insert or update a transaction and return the refreshed area."""
-    transaction = Transaction(
-        id=int(transaction_id) if transaction_id.strip() else None,
-        date=tx_date,
-        ticker=ticker.strip().upper(),
-        type=type,
-        quantity=quantity,
-        price=price,
-        fees=fees,
-        notes=notes.strip() or None,
-    )
+    prefill = {"ticker": ticker.strip().upper(), "isin": isin}
+    try:
+        transaction = Transaction(
+            id=int(transaction_id) if transaction_id.strip() else None,
+            date=tx_date,
+            ticker=ticker.strip().upper(),
+            type=type,
+            quantity=quantity,
+            price=float(price or 0),
+            fees=float(fees or 0),
+            notes=notes.strip() or None,
+        )
+    except ValueError:
+        return _area(request, service, prefill=prefill, error="Valori numerici non validi.")
     try:
         service.save_transaction(transaction, isin or None)
     except (ValueError, RuntimeError) as exc:
-        return _area(request, service, current=transaction, error=str(exc))
+        return _area(request, service, current=transaction, prefill=prefill, error=str(exc))
+    except Exception:
+        logger.exception("Unexpected error while saving a transaction")
+        return _area(
+            request, service, current=transaction, prefill=prefill, error="Errore imprevisto."
+        )
     return _area(request, service, message="Transazione salvata.")
 
 

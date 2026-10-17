@@ -114,3 +114,22 @@ def test_new_form_is_prefilled_from_a_listing(client: TestClient) -> None:
     )
     assert 'value="VWCE.DE"' in form.text
     assert 'value="IE00BK5BQT80"' in form.text
+
+
+def test_empty_price_and_fees_are_treated_as_zero_and_bad_numbers_are_reported(
+    client: TestClient,
+) -> None:
+    ok = client.post("/transactions", data=_form(price="", fees=""))
+    assert "Transazione salvata." in ok.text
+    bad = client.post("/transactions", data=_form(price="abc"))
+    assert "Valori numerici non validi." in bad.text
+    tampered = client.post("/transactions", data=_form(id="x"))
+    assert "Valori numerici non validi." in tampered.text
+
+
+def test_failed_save_keeps_the_isin_in_the_form(client: TestClient) -> None:
+    response = client.post(
+        "/transactions", data=_form(type="SELL", quantity="5", isin="IE00BK5BQT80")
+    )
+    assert "negative" in response.text
+    assert 'name="isin" value="IE00BK5BQT80"' in response.text
