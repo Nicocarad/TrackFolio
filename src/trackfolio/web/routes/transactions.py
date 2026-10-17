@@ -121,6 +121,7 @@ def save(
     try:
         transaction = Transaction(
             id=int(transaction_id) if transaction_id.strip() else None,
+            user_id=service.user_id,
             date=tx_date,
             ticker=ticker.strip().upper(),
             type=type,

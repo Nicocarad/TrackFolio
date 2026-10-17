@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
-from trackfolio.models import Asset
+from trackfolio.models import Asset, User
 from trackfolio.web.app import create_app
 from trackfolio.web.deps import get_db, get_provider
 
@@ -32,6 +32,10 @@ def client() -> Generator[TestClient]:
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
     )
     SQLModel.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        session.add(User(email="a@example.com", password_hash="x"))
+        session.commit()
 
     def override_db() -> Generator[Session]:
         with Session(engine) as session:

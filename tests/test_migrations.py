@@ -33,7 +33,7 @@ def test_fresh_database_matches_models_and_enforces_checks(tmp_path: Path) -> No
     engine = _engine(tmp_path / "fresh.db")
     init_db(engine)
 
-    assert _version(engine) == "0004"
+    assert _version(engine) == "0005"
     with engine.connect() as connection:
         diff = compare_metadata(MigrationContext.configure(connection), SQLModel.metadata)
     assert diff == []
@@ -67,7 +67,7 @@ def test_legacy_database_is_backed_up_stamped_and_keeps_data(tmp_path: Path) -> 
         connection.execute(text(INSERT_V1.format(quantity=3, currency="EUR")))
     init_db(engine)
 
-    assert _version(engine) == "0004"
+    assert _version(engine) == "0005"
     with engine.connect() as connection:
         assert connection.execute(text('SELECT quantity FROM "transaction"')).scalar() == 3
 
@@ -85,3 +85,52 @@ def test_currency_column_migration_refuses_mismatched_rows(tmp_path: Path) -> No
 
     with pytest.raises(RuntimeError, match="different from their asset"):
         init_db(engine)
+
+
+def test_users_migration_assigns_existing_transactions_to_a_placeholder_admin(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path / "users.db")
+    config = _alembic_config()
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "0004")
+        connection.execute(
+            text("INSERT INTO asset (ticker, name, currency) VALUES ('ABC','A','EUR')")
+        )
+        connection.execute(text(INSERT.format(quantity=3)))
+
+    init_db(engine)
+
+    with engine.connect() as connection:
+        user = connection.execute(
+            text('SELECT id, email, password_hash, is_admin FROM "user"')
+        ).one()
+        owner = connection.execute(text('SELECT user_id FROM "transaction"')).scalar()
+    assert (user.email, user.password_hash, bool(user.is_admin)) == (
+        "admin@trackfolio.local",
+        "!",
+        True,
+    )
+    assert owner == user.id
+
+
+def test_users_migration_creates_no_user_for_an_empty_database(tmp_path: Path) -> None:
+    engine = _engine(tmp_path / "empty.db")
+    init_db(engine)
+    with engine.connect() as connection:
+        assert connection.execute(text('SELECT count(*) FROM "user"')).scalar() == 0
+
+
+def test_users_migration_downgrades_on_sqlite(tmp_path: Path) -> None:
+    engine = _engine(tmp_path / "down.db")
+    init_db(engine)
+    config = _alembic_config()
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.downgrade(config, "0004")
+    with engine.connect() as connection:
+        columns = {row[1] for row in connection.execute(text('PRAGMA table_info("transaction")'))}
+    assert "user_id" not in columns
+    init_db(engine)
+    assert _version(engine) == "0005"

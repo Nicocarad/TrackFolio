@@ -48,15 +48,16 @@ REFRESH_OVERLAP_DAYS = 5
 
 
 class PortfolioService:
-    """Application boundary used by the UI."""
+    """Application boundary used by the web layer; every operation is scoped to one user."""
 
-    def __init__(self, session: Session, provider: PriceProvider) -> None:
+    def __init__(self, session: Session, provider: PriceProvider, user_id: int) -> None:
         self.session = session
+        self.user_id = user_id
         self.provider = provider
 
     def list_transactions(self) -> list[Transaction]:
         """List all saved transactions."""
-        return transactions.list_transactions(self.session)
+        return transactions.list_transactions(self.session, self.user_id)
 
     def save_transaction(self, transaction: Transaction, isin: str | None = None) -> Transaction:
         """Validate holdings and asset, then insert or update a transaction atomically.
@@ -65,7 +66,7 @@ class PortfolioService:
         metadata does not carry it).
         """
         try:
-            existing = transactions.list_transactions(self.session)
+            existing = transactions.list_transactions(self.session, self.user_id)
             data = transaction.model_dump()
             validate_transaction(
                 data, pd.DataFrame([item.model_dump() for item in existing]), transaction.id
@@ -79,7 +80,7 @@ class PortfolioService:
                 if isin and stdnum_isin.is_valid(isin.upper()):
                     known.isin = isin.upper()
                 assets.save_asset(self.session, known)
-            saved = transactions.save_transaction(self.session, transaction)
+            saved = transactions.save_transaction(self.session, self.user_id, transaction)
             self.session.commit()
         except Exception:
             self.session.rollback()
@@ -89,13 +90,13 @@ class PortfolioService:
 
     def delete_transaction(self, transaction_id: int) -> None:
         """Delete a transaction."""
-        current = transactions.list_transactions(self.session)
+        current = transactions.list_transactions(self.session, self.user_id)
         proposed = [item.model_dump() for item in current if item.id != transaction_id]
         if len(proposed) == len(current):
             raise DomainError(ErrorCode.TRANSACTION_NOT_FOUND, transaction_id=transaction_id)
         calculate_positions(pd.DataFrame(proposed))
         try:
-            transactions.delete_transaction(self.session, transaction_id)
+            transactions.delete_transaction(self.session, self.user_id, transaction_id)
             self.session.commit()
         except Exception:
             self.session.rollback()
@@ -118,12 +119,14 @@ class PortfolioService:
 
     def _assets_by_ticker(self) -> dict[str, Asset | None]:
         stored = {asset.ticker: asset for asset in assets.get_assets(self.session)}
-        tickers = {item.ticker for item in transactions.list_transactions(self.session)}
+        tickers = {
+            item.ticker for item in transactions.list_transactions(self.session, self.user_id)
+        }
         return {ticker: stored.get(ticker) for ticker in tickers}
 
     def refresh_prices(self) -> tuple[int, list[DataWarning]]:
         """Refresh cached asset and FX prices, retaining cache on provider failures."""
-        all_transactions = transactions.list_transactions(self.session)
+        all_transactions = transactions.list_transactions(self.session, self.user_id)
         if not all_transactions:
             return 0, []
         tickers = sorted({item.ticker for item in all_transactions})
@@ -159,7 +162,7 @@ class PortfolioService:
         self,
     ) -> tuple[pd.DataFrame, pd.DataFrame, PortfolioMetrics, list[DataWarning]]:
         """Return historical valuation, current positions, KPIs, and data warnings."""
-        tx_models = transactions.list_transactions(self.session)
+        tx_models = transactions.list_transactions(self.session, self.user_id)
         if not tx_models:
             empty = pd.DataFrame()
             return empty, empty, calculate_metrics(0, 0), []

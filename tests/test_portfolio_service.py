@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
-from trackfolio.models import Asset, Transaction, TransactionType
+from trackfolio.models import Asset, Transaction, TransactionType, User
 from trackfolio.repositories import assets as assets_repo
 from trackfolio.repositories import prices as prices_repo
 from trackfolio.services.portfolio_service import PortfolioService, WarningCode
@@ -33,7 +33,11 @@ def service() -> Generator[PortfolioService]:
     )
     SQLModel.metadata.create_all(engine)
     with Session(engine) as session:
-        yield PortfolioService(session, FakeProvider())
+        user = User(email="a@example.com", password_hash="x")
+        session.add(user)
+        session.commit()
+        assert user.id is not None
+        yield PortfolioService(session, FakeProvider(), user.id)
 
 
 def test_service_saves_transaction_and_rejects_removing_required_purchase(

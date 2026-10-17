@@ -17,6 +17,16 @@ class TransactionType(StrEnum):
     DIVIDEND = "DIVIDEND"
 
 
+class User(SQLModel, table=True):
+    """An account; passwords are stored only as argon2 hashes."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    email: str = Field(unique=True, index=True)
+    password_hash: str
+    is_admin: bool = False
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
 class Asset(SQLModel, table=True):
     """A tradable instrument identified by its provider ticker."""
 
@@ -38,6 +48,7 @@ class Transaction(SQLModel, table=True):
     )
 
     id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
     date: Date = Field(index=True)
     ticker: str = Field(foreign_key="asset.ticker", index=True)
     type: TransactionType
