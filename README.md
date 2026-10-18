@@ -51,11 +51,12 @@ Dependencies flow one way: `web → services → core / repositories / market_da
 |------|------|
 | `src/trackfolio/core/` | Pure calculations (no I/O): positions, time series, metrics |
 | `src/trackfolio/market_data/` | `PriceProvider` interface, Yahoo Finance provider, ISIN/ticker search |
-| `src/trackfolio/repositories/` | SQLite persistence for assets, transactions, prices |
-| `src/trackfolio/services/` | `PortfolioService`: orchestrates DB, providers and `core` |
+| `src/trackfolio/repositories/` | Persistence (SQLite or PostgreSQL) for users, assets, transactions, prices, rate-limit events and the search cache |
+| `src/trackfolio/services/` | `PortfolioService` (per-user use cases), `AuthService`, `RateLimiter`, shared price refresh: orchestrate DB, providers and `core` |
 | `src/trackfolio/web/` | FastAPI app: Jinja templates and HTMX fragments; routes call `services/` only. Plotly is served from the installed package, HTMX is vendored in `static/` |
+| `src/trackfolio/migrations/`, `cli.py` | Alembic revisions; the `trackfolio` admin command |
+| `deploy/`, `Containerfile` | Container image, Quadlets, Caddy and the host setup script (see Deployment) |
 | `tests/` | Unit tests with hand-computed values; network is mocked |
-| `IMPROVEMENTS.md` | Open work and design direction |
 | `.claude/`, `CLAUDE.md` | Claude Code settings, hooks and project rules |
 
 The database is created at `data/trackfolio.db` (git-ignored), in WAL mode with foreign keys enforced. The schema is managed by Alembic (`src/trackfolio/migrations/`) and upgraded automatically at startup. A non-empty SQLite database is copied to `data/trackfolio.db.pre-migration-<timestamp>` before each migration. Settings are read from the environment or a git-ignored dotenv file in the project root (template: `.env.example`): `TRACKFOLIO_DATABASE_URL` (e.g. `postgresql+psycopg://user:pass@host/db`) selects PostgreSQL (12 or later) instead of the local SQLite file, `OPENFIGI_API_KEY` raises the OpenFIGI rate limit, `TRACKFOLIO_SECURE_COOKIES` (default true) and `TRACKFOLIO_SESSION_DAYS` (default 14) control the login cookie.
@@ -94,6 +95,30 @@ FX series are stored in `price` under their Yahoo ticker.
 
 </details>
 
+## Design notes
+
+**Web layer.** The UI is a FastAPI app that renders Jinja templates and swaps HTML fragments with HTMX; Plotly draws the charts. It keeps no state between requests, which is what hosting and authentication need, and `core/` and `services/` know nothing about it, so the same logic could later serve another frontend.
+
+```mermaid
+flowchart LR
+    Browser --> Proxy["Caddy (HTTPS)"]
+    Proxy --> App["FastAPI + HTMX"]
+    App --> PG[("PostgreSQL")]
+    Timer["systemd timer: refresh-prices"] --> PG
+    Timer --> Provider["Market data provider"]
+```
+
+| Choice | Why |
+|--------|-----|
+| `web → services → core` with a pure `core/` | Financial logic is testable without a database or a browser |
+| `PriceProvider` interface | yfinance is unofficial and may need replacing |
+| Prices cached in the database; fall back to the cache on network errors | Works through provider outages; failures stay visible as warnings |
+| One shared price job, never a provider call per request | A request cannot be slowed or blocked by the provider, and users cannot trigger provider traffic |
+| `asset` and `price` shared, everything else per user | Market data is public; every transaction query is scoped to a user and other users' rows behave as missing |
+| Server-side sessions, hashed token at rest | A session can be revoked (logout, password reset) |
+| Domain errors with a code, translated in the web layer | Services and `core` stay language-neutral |
+| SQLModel, Alembic, uv, ruff, mypy strict | Typed models that work on SQLite and PostgreSQL; reproducible tooling |
+
 ## Deployment
 
 `deploy/setup.sh` provisions a fresh Oracle Linux 10 host (x86_64 or aarch64) as root; everything then runs rootless as the user `trackfolio`:
@@ -122,10 +147,25 @@ Re-run the script to deploy new code. After it finishes, point a DNS A record at
 
 ## Known limits
 
+**Data and calculations**
 - Dividends are entered by hand; there is no automatic reinvestment, withholding tax logic or foreign-currency payout.
-- Yahoo Finance is unofficial and free providers can be incomplete or delayed; not every OpenFIGI listing has a Yahoo ticker (enter the ticker manually).
+- Prices are daily closes and amounts use `float` with a few fixed tolerances such as `1e-9`; `Decimal` is not needed until precision errors appear.
+- The value series uses a business-day calendar: exchange holidays are ignored and FX rates carry over weekends.
+- `validate_transaction` and `calculate_positions` each replay the transaction history, which duplicates logic.
 - A ticker is the asset key: the same instrument on several exchanges is stored as separate assets.
-- Daily closes only; amounts use `float`.
+- Amounts are converted to EUR only; there is no other base currency.
+
+**Market data**
+- Yahoo Finance is unofficial, may be incomplete or delayed, and its terms and rate limits make it unsuitable for a large public service. A paid provider behind `PriceProvider` is the intended replacement.
+- Not every OpenFIGI listing has a Yahoo ticker (enter the ticker manually), and an ISIN search chains several slow Yahoo calls.
+
+**Hosted service**
+- There is no registration page, password reset or email: an admin manages accounts with the `trackfolio` command.
+- No account or data deletion, and no backup or restore procedure: the database lives in the `trackfolio-db` volume only.
+- Rate limits are a brake, not an exact quota (parallel requests can overshoot them), and 30 failed logins on one email block that email for everyone for up to 15 minutes.
+- The Content-Security-Policy does not restrict scripts because the pages use inline scripts and Plotly.
+- The stack runs on a single host with one app instance; there is no high availability.
+- `deploy/setup.sh` is verified by hand on one Oracle Linux 10.2 VM, not by automated tests.
 
 ## Roadmap
 
@@ -136,4 +176,4 @@ Re-run the script to deploy new code. After it finishes, point a DNS A record at
 | 3 | Benchmark, volatility, drawdown, Sharpe, correlations, breakdown by asset class/area/currency | Planned |
 | 4 | CSV import/export, multi-portfolio, search by name | Planned |
 | 5 | Taxes, rebalancing, alerts, scenarios | Planned |
-| 6 | FastAPI + HTMX UI, multi-user accounts, authentication, hosted deployment (see [IMPROVEMENTS.md](IMPROVEMENTS.md#2-hosted-multi-user-service)) | Planned |
+| 6 | FastAPI + HTMX UI, multi-user accounts, authentication, hosted deployment | Implemented (see Deployment and Known limits) |
