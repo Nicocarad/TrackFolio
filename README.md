@@ -143,7 +143,7 @@ Login is blocked with HTTP 429 (and a `Retry-After` header) after 5 failed attem
 Re-run the script to deploy new code. After it finishes, point a DNS A record at the host, open ports 80/443 (tcp) and 443 (udp) in the cloud network security list, and create the first administrator as the script prints.
 
 > [!NOTE]
-> Verified on an Oracle Linux 10.2 aarch64 VM (1 core, 3.6 GB) without a domain: `setup.sh`, all Quadlet units, the app against PostgreSQL (login, transactions, price refresh job, restart persistence, rate limiting, migrations), and the real client address reaching the app through Caddy from loopback (a client-supplied `X-Forwarded-For` is ignored). Not verified: Let's Encrypt issuance, the client address for traffic arriving from the Internet through firewalld's forward, a reboot, and the pages and charts in a browser behind Caddy. The stack uses about 180 MB of RAM. There is no backup yet: the database lives in the `trackfolio-db` volume only.
+> Verified on an Oracle Linux 10.2 aarch64 VM (1 core, 3.6 GB), with a real domain: `setup.sh` (run several times, to check it is idempotent), a Let's Encrypt certificate, HTTPS, the HTTP-to-HTTPS redirect and HTTP/3, all Quadlet units, the app against PostgreSQL (login with a `Secure` cookie, transactions, price refresh job, rate limiting, migrations), a restart of the whole host (every unit and the timer come back by themselves and the data survives), and the real client address reaching the app from the Internet through firewalld and Caddy (a client-supplied `X-Forwarded-For` is ignored). Not verified: the pages and charts in a browser behind Caddy. The stack uses about 180 MB of RAM.
 
 ## Known limits
 

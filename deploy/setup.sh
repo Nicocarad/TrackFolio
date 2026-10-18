@@ -1,16 +1,11 @@
 #!/usr/bin/env bash
-# Provision TrackFolio on a fresh Oracle Linux 10 host (aarch64 or x86_64).
+# Provision TrackFolio on a fresh Oracle Linux 10 host (aarch64 or x86_64)
 #
 # Run as root from a checkout of this repository:
 #   sudo TRACKFOLIO_DOMAIN=trackfolio.example.com bash deploy/setup.sh
 #
-# Without TRACKFOLIO_DOMAIN the site is served over plain HTTP on port 80 (no certificate,
-# cookies not marked Secure): enough to test, not to use. Re-run with the domain once DNS
-# points at this host.
-#
-# Everything runs rootless as the dedicated user "trackfolio" (Podman Quadlets: PostgreSQL,
-# the app, Caddy, and a systemd timer for the price refresh). Idempotent: re-run it to
-# deploy new code (rebuilds the image and restarts the app); existing secrets are kept.
+# Without TRACKFOLIO_DOMAIN the site is served over plain HTTP on port 80 (no certificate, cookies not marked Secure): enough to test, not to use. Re-run with the domain once DNS points at this host.
+# Everything runs rootless as the dedicated user "trackfolio" (Podman Quadlets: PostgreSQL, the app, Caddy, and a systemd timer for the price refresh). Idempotent: re-run it to deploy new code (rebuilds the image and restarts the app); existing secrets are kept.
 set -euo pipefail
 
 TRACKFOLIO_DOMAIN=${TRACKFOLIO_DOMAIN:-}
@@ -29,7 +24,6 @@ log "Installing packages"
 dnf install -y podman openssl tar >/dev/null
 
 # --- firewall: rootless Caddy listens on 8080/8443, firewalld forwards 80/443 to it ------------
-# (the cloud network security list must also allow 80/443 tcp and 443 udp)
 if systemctl is-active --quiet firewalld; then
     log "Opening and forwarding HTTP, HTTPS and HTTP/3 in firewalld"
     zone=(--permanent --zone=public)
@@ -69,7 +63,6 @@ for _ in $(seq 1 30); do
 done
 [[ -S /run/user/$USER_ID/bus ]] || { echo "user systemd manager did not start" >&2; exit 1; }
 
-# Run a command as the service user from its home (root's working directory is unreadable).
 as_user() {
     runuser -u "$SERVICE_USER" -- env \
         XDG_RUNTIME_DIR="/run/user/$USER_ID" \
@@ -108,7 +101,6 @@ if [[ ! -f $APP_DIR/db.env ]]; then
     )
     unset db_password
 fi
-# Non-secret settings that depend on the domain are rewritten on every run.
 (
     umask 077
     if [[ -n $TRACKFOLIO_DOMAIN ]]; then
@@ -132,13 +124,14 @@ install -o "$SERVICE_USER" -g "$SERVICE_USER" -m 644 "$DEPLOY_DIR/systemd/trackf
 
 # --- image -------------------------------------------------------------------------------------
 log "Building the application image"
+# An interrupted earlier build leaves buildah working containers that keep images in use.
+as_user bash -c "podman ps -a --external --format '{{.Names}}' | grep -- '-working-container\$' | xargs -r podman rm -f >/dev/null || true"
 rm -rf "${SRC_DIR:?}"
 install -d -o "$SERVICE_USER" -g "$SERVICE_USER" "$SRC_DIR"
 tar -C "$REPO_DIR" --exclude=.git --exclude=.venv --exclude=data --exclude=.cache -cf - . \
     | tar -C "$SRC_DIR" -xf -
 chown -R "$SERVICE_USER:$SERVICE_USER" "$SRC_DIR"
 as_user podman build -t localhost/trackfolio:latest -f "$SRC_DIR/Containerfile" "$SRC_DIR"
-as_user podman image prune -f >/dev/null  # drop the previous image and build stages
 
 # --- start --------------------------------------------------------------------------------------
 log "Starting services"
@@ -147,8 +140,8 @@ as_user systemctl --user start trackfolio-db.service
 if [[ $db_changed -eq 1 ]]; then
     as_user systemctl --user restart trackfolio-db.service
 fi
-# App and proxy are restarted on every run: new image, possibly a new Caddyfile.
 as_user systemctl --user restart trackfolio-app.service trackfolio-caddy.service
+as_user podman image prune -f >/dev/null || true
 as_user systemctl --user enable --now trackfolio-refresh.timer
 
 log "Waiting for the application to become healthy"
