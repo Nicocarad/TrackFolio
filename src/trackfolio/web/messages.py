@@ -38,6 +38,7 @@ ERRORS_IT: dict[ErrorCode, str] = {
     ErrorCode.EMAIL_TAKEN: "Esiste già un utente con email {email}.",
     ErrorCode.PASSWORD_TOO_SHORT: "La password deve avere almeno {minimum} caratteri.",
     ErrorCode.USER_NOT_FOUND: "Nessun utente con email {email}.",
+    ErrorCode.RATE_LIMITED: "Troppi tentativi. Riprova tra {seconds} secondi.",
 }
 
 

@@ -2,6 +2,7 @@
 
 import hashlib
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -13,7 +14,15 @@ from trackfolio.config import get_settings
 from trackfolio.errors import DomainError, ErrorCode
 from trackfolio.models import User, UserSession
 from trackfolio.repositories import users
+from trackfolio.services.rate_limiter import RateLimiter
 
+LOGIN_KIND_PAIR = "login_fail_pair"  # same email from the same IP
+LOGIN_KIND_IP = "login_fail_ip"
+LOGIN_KIND_EMAIL = "login_fail_email"  # distributed guessing against one account
+LOGIN_PAIR_LIMIT = 5
+LOGIN_IP_LIMIT = 20
+LOGIN_EMAIL_LIMIT = 30
+LOGIN_WINDOW = timedelta(minutes=15)
 MIN_PASSWORD_LENGTH = 12
 UNUSABLE_HASH = "!"
 
@@ -41,8 +50,9 @@ class LoginResult:
 class AuthService:
     """User accounts and sessions; commits its own changes."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, clock: Callable[[], datetime] = _now) -> None:
         self.session = session
+        self.clock = clock  # used by the login rate limiter
 
     # -- user management (used by the admin CLI) --------------------------------------------
 
@@ -82,13 +92,33 @@ class AuthService:
 
     # -- login / sessions ---------------------------------------------------------------------
 
-    def login(self, email: str, password: str) -> LoginResult | None:
-        """Check the credentials and open a session; None when they are wrong."""
+    def login(self, email: str, password: str, client_ip: str | None = None) -> LoginResult | None:
+        """Check the credentials and open a session; None when they are wrong.
+
+        Failed attempts are counted per (email, ``client_ip``), per IP and per email; when any
+        is over its limit ``DomainError(RATE_LIMITED)`` is raised before any password hashing.
+        The attempt is recorded before verifying and removed again on success. Check and record
+        are separate steps, so a burst of truly parallel requests can overshoot a limit by the
+        burst size; the limits are a brake, not an exact quota.
+        """
+        limiter = RateLimiter(self.session, self.clock)
+        email_key = users.normalize_email(email)[:254]
+        ip = client_ip or "-"
+        buckets = [
+            (LOGIN_KIND_PAIR, f"{ip}|{email_key}", LOGIN_PAIR_LIMIT),
+            (LOGIN_KIND_IP, ip, LOGIN_IP_LIMIT),
+            (LOGIN_KIND_EMAIL, email_key, LOGIN_EMAIL_LIMIT),
+        ]
+        waits = [limiter.check(kind, key, limit, LOGIN_WINDOW) for kind, key, limit in buckets]
+        if wait := max(waits):
+            raise DomainError(ErrorCode.RATE_LIMITED, seconds=wait)
+        recorded = [limiter.record(kind, key) for kind, key, _ in buckets]
         user = users.get_user_by_email(self.session, email)
         if user is None or user.id is None or not self._verify(user, password):
             if user is None:
                 self._verify_dummy(password)
             return None
+        limiter.remove(recorded)
         settings = get_settings()
         lifetime = timedelta(days=settings.session_days)
         self.session.exec(delete(UserSession).where(col(UserSession.expires_at) < _now()))

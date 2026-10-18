@@ -1,10 +1,7 @@
-# Public HTTPS entry point. {$TRACKFOLIO_DOMAIN} and {$TRACKFOLIO_ACME_EMAIL} come from the
-# caddy environment file in ~/trackfolio; certificates are obtained and renewed automatically.
-{
-	email {$TRACKFOLIO_ACME_EMAIL}
-}
-
-{$TRACKFOLIO_DOMAIN} {
+# Public entry point. TRACKFOLIO_SITE (set in the caddy environment file in ~/trackfolio) is the
+# domain: Caddy then obtains and renews a certificate by itself. Without it the site answers
+# on plain HTTP (:80), for testing only.
+{$TRACKFOLIO_SITE::80} {
 	encode zstd gzip
 
 	header {

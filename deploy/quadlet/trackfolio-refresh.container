@@ -5,6 +5,7 @@ After=trackfolio-db.service
 
 [Container]
 Image=localhost/trackfolio:latest
+Pull=never
 ContainerName=trackfolio-refresh
 Network=trackfolio.network
 EnvironmentFile=%h/trackfolio/app.env

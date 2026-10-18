@@ -7,9 +7,10 @@ After=trackfolio-app.service
 Image=docker.io/library/caddy:2
 ContainerName=trackfolio-caddy
 Network=trackfolio.network
-PublishPort=80:80
-PublishPort=443:443
-PublishPort=443:443/udp
+# Rootless: host ports 8080/8443; firewalld forwards 80/443 to them (see deploy/setup.sh).
+PublishPort=8080:80
+PublishPort=8443:443
+PublishPort=8443:443/udp
 Volume=%h/trackfolio/Caddyfile:/etc/caddy/Caddyfile:ro,Z
 Volume=trackfolio-caddy-data.volume:/data
 Volume=trackfolio-caddy-config.volume:/config

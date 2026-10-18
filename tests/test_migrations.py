@@ -33,7 +33,7 @@ def test_fresh_database_matches_models_and_enforces_checks(tmp_path: Path) -> No
     engine = _engine(tmp_path / "fresh.db")
     init_db(engine)
 
-    assert _version(engine) == "0006"
+    assert _version(engine) == "0007"
     with engine.connect() as connection:
         diff = compare_metadata(MigrationContext.configure(connection), SQLModel.metadata)
     assert diff == []
@@ -67,7 +67,7 @@ def test_legacy_database_is_backed_up_stamped_and_keeps_data(tmp_path: Path) -> 
         connection.execute(text(INSERT_V1.format(quantity=3, currency="EUR")))
     init_db(engine)
 
-    assert _version(engine) == "0006"
+    assert _version(engine) == "0007"
     with engine.connect() as connection:
         assert connection.execute(text('SELECT quantity FROM "transaction"')).scalar() == 3
 
@@ -133,4 +133,4 @@ def test_users_migration_downgrades_on_sqlite(tmp_path: Path) -> None:
         columns = {row[1] for row in connection.execute(text('PRAGMA table_info("transaction")'))}
     assert "user_id" not in columns
     init_db(engine)
-    assert _version(engine) == "0006"
+    assert _version(engine) == "0007"

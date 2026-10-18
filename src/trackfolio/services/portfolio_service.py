@@ -1,7 +1,8 @@
 """Portfolio use cases coordinating persistence, market data, and pure calculations."""
 
 import logging
-from datetime import date
+from collections.abc import Callable
+from datetime import UTC, date, datetime, timedelta
 
 import pandas as pd
 from sqlmodel import Session
@@ -16,16 +17,32 @@ from trackfolio.errors import DomainError, ErrorCode
 from trackfolio.market_data.instrument_search import search_isin, search_ticker
 from trackfolio.market_data.provider import PriceProvider
 from trackfolio.models import Asset, Transaction
-from trackfolio.repositories import assets, prices, transactions
+from trackfolio.repositories import assets, instrument_cache, prices, transactions
+from trackfolio.services.rate_limiter import RateLimiter
 from trackfolio.services.warnings import DataWarning, WarningCode
 
 logger = logging.getLogger(__name__)
+
+SEARCH_KIND = "search"
+SEARCH_LIMIT = 30
+SEARCH_WINDOW = timedelta(minutes=10)
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
 
 
 class PortfolioService:
     """Application boundary used by the web layer; every operation is scoped to one user."""
 
-    def __init__(self, session: Session, provider: PriceProvider, user_id: int) -> None:
+    def __init__(
+        self,
+        session: Session,
+        provider: PriceProvider,
+        user_id: int,
+        clock: Callable[[], datetime] = _now,
+    ) -> None:
+        self.clock = clock
         self.session = session
         self.user_id = user_id
         self.provider = provider
@@ -82,11 +99,36 @@ class PortfolioService:
         return prices.latest_price_date(self.session)
 
     def search_instrument(self, query: str) -> list[Asset]:
-        """Find listings by ISIN (auto-detected) or ticker/name."""
+        """Find listings by ISIN (auto-detected) or ticker/name.
+
+        Limited per user; non-empty results are cached persistently for 7 days.
+        """
+        limiter = RateLimiter(self.session, self.clock)
+        key = str(self.user_id)
+        wait = limiter.check(SEARCH_KIND, key, SEARCH_LIMIT, SEARCH_WINDOW)
+        if wait:
+            raise DomainError(ErrorCode.RATE_LIMITED, seconds=wait)
+        limiter.record(SEARCH_KIND, key)
         normalized = query.strip()
-        if stdnum_isin.is_valid(normalized.upper()):
-            return search_isin(normalized, self.provider)
-        return search_ticker(normalized, self.provider)
+        is_isin = stdnum_isin.is_valid(normalized.upper())
+        cache_key = f"isin:{normalized.upper()}" if is_isin else f"q:{normalized.lower()}"
+        cacheable = len(cache_key) <= instrument_cache.MAX_KEY_LENGTH
+        cached = (
+            instrument_cache.get_cached(self.session, cache_key, self.clock())
+            if cacheable
+            else None
+        )
+        if cached is not None:
+            return cached
+        found = (
+            search_isin(normalized, self.provider)
+            if is_isin
+            else search_ticker(normalized, self.provider)
+        )
+        if found and cacheable:
+            instrument_cache.put_cached(self.session, cache_key, found, self.clock())
+            self.session.commit()
+        return found
 
     def asset_currencies(self) -> dict[str, str]:
         """Map every known ticker to its currency."""

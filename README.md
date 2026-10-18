@@ -68,8 +68,12 @@ After changing `models.py`: `uv run alembic revision --autogenerate -m "<change>
 | Table | Columns |
 |-------|---------|
 | `asset` | `ticker` (PK, provider format e.g. `VWCE.DE`), `isin`, `exchange`, `name`, `currency`, `asset_class` |
-| `transaction` | `id` (PK), `date`, `ticker` (FK), `type` (BUY/SELL), `quantity`, `price`, `fees`, `notes` |
+| `user` | `id` (PK), `email` (unique), `password_hash` (argon2), `is_admin`, `created_at` |
+| `user_session` | `token_hash` (PK, SHA-256 of the cookie token), `user_id` (FK), `csrf_token`, `created_at`, `expires_at` |
+| `transaction` | `id` (PK), `user_id` (FK), `date`, `ticker` (FK), `type` (BUY/SELL/SPLIT/DIVIDEND), `quantity`, `price`, `fees`, `notes` |
 | `price` | `ticker` + `date` (PK), `close`, `source`, `fetched_at` |
+| `rate_event` | `id` (PK), `kind`, `key`, `created_at`: failed logins and searches, for rate limiting |
+| `instrument_cache` | `query_key` (PK), `payload` (JSON), `created_at`: search results, valid for 7 days |
 
 FX series are stored in `price` under their Yahoo ticker.
 
@@ -106,6 +110,8 @@ sudo TRACKFOLIO_DOMAIN=trackfolio.example.com TRACKFOLIO_ACME_EMAIL=you@example.
 | Price refresh | `deploy/systemd/trackfolio-refresh.timer` | `trackfolio refresh-prices` every 15 minutes, weekdays 09:00-22:15 Europe/Rome |
 | Secrets | `~trackfolio/trackfolio/*.env` (mode 600) | Generated on first run, never overwritten, never printed |
 | Health and logs | `GET /health`, stdout | JSON lines with method, path (no query string), status and duration only |
+
+Login is blocked with HTTP 429 (and a `Retry-After` header) after 5 failed attempts for the same email and client IP, 20 from one IP, or 30 for one email within 15 minutes; the per-pair limit keeps an attacker from locking a user out of their own account from another address, and 30 failures on one email still block everyone for up to 15 minutes. Instrument search is limited to 30 requests per user per 10 minutes. The per-IP limit relies on uvicorn's `--proxy-headers` (set in the `Containerfile`; the app container is reachable only through Caddy) and on Caddy preserving the `Host` header, which the origin check also needs. Instrument search results are cached in the database for 7 days.
 
 Re-run the script to deploy new code. After it finishes, point a DNS A record at the host, open ports 80/443 (tcp) and 443 (udp) in the cloud network security list, and create the first administrator as the script prints.
 

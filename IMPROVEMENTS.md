@@ -15,7 +15,7 @@ The UI is a FastAPI app rendering Jinja templates, with HTMX for partial updates
 
 ## 2. Hosted multi-user service
 
-Builds on section 1; PostgreSQL support, Alembic migrations and settings from the environment are already in place. Done: container image, Quadlets, Caddy, health endpoint and JSON logs (`deploy/`), settings from the environment, the shared price refresh job (`trackfolio refresh-prices`), users owning their data, login with argon2 and server-side sessions, CSRF protection, cross-user isolation tests.
+Builds on section 1; PostgreSQL support, Alembic migrations and settings from the environment are already in place. Done: login and search rate limiting with a persistent search cache, container image, Quadlets, Caddy, health endpoint and JSON logs (`deploy/`), settings from the environment, the shared price refresh job (`trackfolio refresh-prices`), users owning their data, login with argon2 and server-side sessions, CSRF protection, cross-user isolation tests.
 
 ```mermaid
 flowchart LR
@@ -29,7 +29,6 @@ flowchart LR
 | ID | Area | Work |
 |----|------|------|
 | E8 | Market data | Free yfinance is unsuitable for a public service (rate limits, terms of use): put a paid provider behind `PriceProvider`. |
-| E9 | Abuse protection | Rate limiting on login (none today: every attempt costs an argon2 verification and can be brute-forced) and on instrument search; persistent global cache for search results (metadata is cached in memory per process today). Behind a proxy, `Host` must be preserved because the origin check compares it. |
 | E11 | Privacy | Account and data deletion; backup and restore procedure. |
 
 ## Keep
@@ -47,7 +46,7 @@ flowchart LR
 | Topic | Issue | Direction |
 |-------|-------|-----------|
 | Position replay | `validate_transaction` and `calculate_positions` each replay history, which is duplicated logic. | One replay routine in `core/positions.py`, used by both. |
-| Instrument lookup | An ISIN search chains many slow, flaky yfinance calls (`Ticker.get_info`, `Search`). | Build `Asset` from search-result data, call `get_info` only for the selected listing, persist the result (E9). |
+| Instrument lookup | An ISIN search chains many slow, flaky yfinance calls (`Ticker.get_info`, `Search`). | Build `Asset` from search-result data, call `get_info` only for the selected listing, persist the result. |
 | Money type | `float` with ad hoc tolerances such as `1e-9`. | Keep `float`; centralize tolerances and rounding. Move to `Decimal` only if precision errors appear. |
 | Calendar | Business-day index (`freq="B"`) ignores exchange holidays and forward-fills FX across weekends. | Keep; document it in the README if it matters to users. |
 

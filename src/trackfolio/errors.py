@@ -33,6 +33,7 @@ class ErrorCode(StrEnum):
     EMAIL_TAKEN = "email_taken"
     PASSWORD_TOO_SHORT = "password_too_short"
     USER_NOT_FOUND = "user_not_found"
+    RATE_LIMITED = "rate_limited"
 
 
 MESSAGES: dict[ErrorCode, str] = {
@@ -66,6 +67,7 @@ MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.EMAIL_TAKEN: "A user with email {email} already exists",
     ErrorCode.PASSWORD_TOO_SHORT: "Password must be at least {minimum} characters",
     ErrorCode.USER_NOT_FOUND: "No user with email {email}",
+    ErrorCode.RATE_LIMITED: "Too many attempts; retry in {seconds} seconds",
 }
 
 

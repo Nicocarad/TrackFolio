@@ -2,19 +2,21 @@
 # Provision TrackFolio on a fresh Oracle Linux 10 host (aarch64 or x86_64).
 #
 # Run as root from a checkout of this repository:
-#   sudo TRACKFOLIO_DOMAIN=trackfolio.example.com TRACKFOLIO_ACME_EMAIL=you@example.com \
-#     bash deploy/setup.sh
+#   sudo TRACKFOLIO_DOMAIN=trackfolio.example.com bash deploy/setup.sh
+#
+# Without TRACKFOLIO_DOMAIN the site is served over plain HTTP on port 80 (no certificate,
+# cookies not marked Secure): enough to test, not to use. Re-run with the domain once DNS
+# points at this host.
 #
 # Everything runs rootless as the dedicated user "trackfolio" (Podman Quadlets: PostgreSQL,
 # the app, Caddy, and a systemd timer for the price refresh). Idempotent: re-run it to
 # deploy new code (rebuilds the image and restarts the app); existing secrets are kept.
 set -euo pipefail
 
-: "${TRACKFOLIO_DOMAIN:?set TRACKFOLIO_DOMAIN (e.g. trackfolio.example.com)}"
-: "${TRACKFOLIO_ACME_EMAIL:?set TRACKFOLIO_ACME_EMAIL (contact address for the TLS certificate)}"
+TRACKFOLIO_DOMAIN=${TRACKFOLIO_DOMAIN:-}
 [[ $EUID -eq 0 ]] || { echo "run as root" >&2; exit 1; }
-[[ $TRACKFOLIO_DOMAIN =~ ^[A-Za-z0-9.-]+$ ]] || { echo "invalid TRACKFOLIO_DOMAIN" >&2; exit 1; }
-[[ $TRACKFOLIO_ACME_EMAIL =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$ ]] || { echo "invalid email" >&2; exit 1; }
+[[ -z $TRACKFOLIO_DOMAIN || $TRACKFOLIO_DOMAIN =~ ^[A-Za-z0-9.-]+$ ]] \
+    || { echo "invalid TRACKFOLIO_DOMAIN" >&2; exit 1; }
 
 SERVICE_USER=trackfolio
 REPO_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -26,19 +28,22 @@ log() { printf '==> %s\n' "$*"; }
 log "Installing packages"
 dnf install -y podman openssl tar >/dev/null
 
-# --- firewall (the cloud network security list must also allow 80/443) --------------------------
+# --- firewall: rootless Caddy listens on 8080/8443, firewalld forwards 80/443 to it ------------
+# (the cloud network security list must also allow 80/443 tcp and 443 udp)
 if systemctl is-active --quiet firewalld; then
-    log "Opening HTTP, HTTPS and HTTP/3 in firewalld"
-    firewall-cmd --permanent --add-service=http --add-service=https --add-port=443/udp >/dev/null
+    log "Opening and forwarding HTTP, HTTPS and HTTP/3 in firewalld"
+    zone=(--permanent --zone=public)
+    firewall-cmd "${zone[@]}" --add-service=http --add-service=https >/dev/null
+    firewall-cmd "${zone[@]}" --add-port=443/udp >/dev/null
+    for rule in 80:tcp:8080 443:tcp:8443 443:udp:8443; do
+        IFS=: read -r port proto target <<<"$rule"
+        firewall-cmd "${zone[@]}" \
+            --add-forward-port="port=$port:proto=$proto:toport=$target" >/dev/null
+    done
     firewall-cmd --reload >/dev/null
 else
-    echo "WARNING: firewalld is not running; make sure ports 80/443 (tcp) and 443 (udp) are open" >&2
+    echo "WARNING: firewalld is not running; forward 80/443 to 8080/8443 yourself" >&2
 fi
-
-# --- rootless users may bind 80/443 --------------------------------------------------------------
-log "Allowing unprivileged processes to bind ports >= 80"
-echo "net.ipv4.ip_unprivileged_port_start=80" >/etc/sysctl.d/99-trackfolio-ports.conf
-sysctl -w net.ipv4.ip_unprivileged_port_start=80 >/dev/null
 
 # --- service user -------------------------------------------------------------------------------
 if ! id "$SERVICE_USER" >/dev/null 2>&1; then
@@ -72,9 +77,12 @@ as_user() {
         bash -c 'cd "$1" && shift && exec "$@"' _ "$HOME_DIR" "$@"
 }
 
-# --- configuration and secrets (never overwritten once created) ----------------------------------
+# --- configuration and secrets (database password never overwritten once created) -----------------
 log "Writing configuration in $APP_DIR"
-install -d -o "$SERVICE_USER" -g "$SERVICE_USER" -m 700 "$APP_DIR" "$QUADLET_DIR" "$UNIT_DIR"
+install -d -o "$SERVICE_USER" -g "$SERVICE_USER" -m 700 "$APP_DIR"
+# Parents of these directories must belong to the service user, not root.
+as_user mkdir -p "$QUADLET_DIR" "$UNIT_DIR"
+chown -R "$SERVICE_USER:$SERVICE_USER" "$HOME_DIR/.config"
 install -o "$SERVICE_USER" -g "$SERVICE_USER" -m 644 "$DEPLOY_DIR/Caddyfile" "$APP_DIR/Caddyfile"
 
 if [[ -f $APP_DIR/db.env && ! -f $APP_DIR/app.env ]] \
@@ -91,15 +99,21 @@ if [[ ! -f $APP_DIR/db.env ]]; then
         umask 077
         printf 'POSTGRES_USER=trackfolio\nPOSTGRES_DB=trackfolio\nPOSTGRES_PASSWORD=%s\n' \
             "$db_password" >"$APP_DIR/db.env"
-        printf 'TRACKFOLIO_DATABASE_URL=postgresql+psycopg://trackfolio:%s@trackfolio-db:5432/trackfolio\nTRACKFOLIO_SECURE_COOKIES=true\n' \
+        printf 'TRACKFOLIO_DATABASE_URL=postgresql+psycopg://trackfolio:%s@trackfolio-db:5432/trackfolio\n' \
             "$db_password" >"$APP_DIR/app.env"
     )
     unset db_password
 fi
+# Non-secret settings that depend on the domain are rewritten on every run.
 (
     umask 077
-    printf 'TRACKFOLIO_DOMAIN=%s\nTRACKFOLIO_ACME_EMAIL=%s\n' \
-        "$TRACKFOLIO_DOMAIN" "$TRACKFOLIO_ACME_EMAIL" >"$APP_DIR/caddy.env"
+    if [[ -n $TRACKFOLIO_DOMAIN ]]; then
+        printf 'TRACKFOLIO_SECURE_COOKIES=true\n' >"$APP_DIR/web.env"
+        printf 'TRACKFOLIO_SITE=%s\n' "$TRACKFOLIO_DOMAIN" >"$APP_DIR/caddy.env"
+    else
+        printf 'TRACKFOLIO_SECURE_COOKIES=false\n' >"$APP_DIR/web.env"
+        : >"$APP_DIR/caddy.env"
+    fi
 )
 chown "$SERVICE_USER:$SERVICE_USER" "$APP_DIR"/*.env
 chmod 600 "$APP_DIR"/*.env
@@ -142,13 +156,21 @@ for _ in $(seq 1 60); do
 done
 [[ ${healthy:-0} -eq 1 ]] || { echo "the app is not healthy: check 'journalctl' for the user $SERVICE_USER" >&2; exit 1; }
 
+if [[ -n $TRACKFOLIO_DOMAIN ]]; then
+    where="https://$TRACKFOLIO_DOMAIN"
+    dns="  1. DNS: point an A record for $TRACKFOLIO_DOMAIN to this host's public IP, and allow
+     ports 80 and 443 (tcp) and 443 (udp) in the cloud network security list."
+else
+    where="http://<this host's IP> (plain HTTP, no domain configured)"
+    dns="  1. No domain yet: re-run with TRACKFOLIO_DOMAIN=your.domain once DNS points here,
+     and allow ports 80 and 443 (tcp) and 443 (udp) in the cloud network security list."
+fi
 cat <<EOF
 
-TrackFolio is running behind https://$TRACKFOLIO_DOMAIN
+TrackFolio is running at $where
 
 Next steps:
-  1. DNS: point an A record for $TRACKFOLIO_DOMAIN to this host's public IP, and allow
-     ports 80 and 443 (tcp) and 443 (udp) in the cloud network security list.
+$dns
   2. Create the first administrator (prompts for a password):
        sudo -u $SERVICE_USER env -C $HOME_DIR XDG_RUNTIME_DIR=/run/user/$USER_ID \\
          podman exec -it trackfolio-app trackfolio create-user you@example.com --admin

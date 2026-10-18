@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from datetime import date as Date
 from enum import StrEnum
 
-from sqlalchemy import CheckConstraint
+from sqlalchemy import CheckConstraint, DateTime
 from sqlmodel import Field, SQLModel
 
 
@@ -37,6 +37,31 @@ class UserSession(SQLModel, table=True):
     csrf_token: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     expires_at: datetime
+
+
+class RateEvent(SQLModel, table=True):
+    """One counted event (for example a failed login) for the database-backed rate limiter."""
+
+    __tablename__ = "rate_event"
+
+    id: int | None = Field(default=None, primary_key=True)
+    kind: str = Field(index=True)
+    key: str = Field(index=True)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC), sa_type=DateTime(timezone=True)
+    )
+
+
+class InstrumentCache(SQLModel, table=True):
+    """Persistent instrument search results; ``payload`` is a JSON list of Asset fields."""
+
+    __tablename__ = "instrument_cache"
+
+    query_key: str = Field(primary_key=True)
+    payload: str
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC), sa_type=DateTime(timezone=True)
+    )
 
 
 class Asset(SQLModel, table=True):

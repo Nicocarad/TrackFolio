@@ -7,8 +7,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlmodel import Session
 
 from trackfolio.config import get_settings
+from trackfolio.errors import DomainError, ErrorCode
 from trackfolio.services.auth_service import AuthService
 from trackfolio.web.deps import COOKIE_NAME, get_db, require_csrf
+from trackfolio.web.messages import error_text
 from trackfolio.web.routes.templating import templates
 
 router = APIRouter()
@@ -29,14 +31,25 @@ def login(
 ) -> Any:
     """Open a session; a generic error never reveals whether the email exists."""
     auth = AuthService(session)
-    previous = request.cookies.get(COOKIE_NAME)
-    if previous:
-        auth.logout(previous)  # a re-login never leaves the old session valid
-    result = auth.login(email, password)
+    try:
+        result = auth.login(email, password, request.client.host if request.client else None)
+    except DomainError as error:
+        if error.code != ErrorCode.RATE_LIMITED:
+            raise
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {"error": error_text(error)},
+            status_code=429,
+            headers={"Retry-After": str(error.params["seconds"])},
+        )
     if result is None:
         return templates.TemplateResponse(
             request, "login.html", {"error": "Email o password non corrette."}, status_code=401
         )
+    previous = request.cookies.get(COOKIE_NAME)
+    if previous:
+        auth.logout(previous)  # a successful re-login never leaves the old session valid
     response = RedirectResponse("/", status_code=303)
     response.set_cookie(
         COOKIE_NAME,
