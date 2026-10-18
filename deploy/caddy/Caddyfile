@@ -1,0 +1,20 @@
+# Public entry point with a certificate. TRACKFOLIO_SITE (set in the caddy environment file in
+# ~/trackfolio) is the domain; Caddy obtains and renews its certificate by itself.
+#
+# Caddy runs rootless on the host network (so it sees real client IPs) and listens on
+# 8080/8443; firewalld forwards 80/443 to those ports. Redirects are written by hand because
+# Caddy's own would point browsers at :8443.
+{
+	http_port 8080
+	https_port 8443
+	auto_https disable_redirects
+	admin off
+}
+
+http://{$TRACKFOLIO_SITE} {
+	redir https://{host}{uri} permanent
+}
+
+{$TRACKFOLIO_SITE} {
+	import site.conf
+}

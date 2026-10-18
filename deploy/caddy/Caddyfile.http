@@ -1,0 +1,10 @@
+# Test mode, used by setup.sh when no domain is given: plain HTTP, no certificate.
+{
+	http_port 8080
+	auto_https off
+	admin off
+}
+
+:8080 {
+	import site.conf
+}

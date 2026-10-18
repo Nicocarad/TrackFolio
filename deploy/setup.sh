@@ -83,7 +83,11 @@ install -d -o "$SERVICE_USER" -g "$SERVICE_USER" -m 700 "$APP_DIR"
 # Parents of these directories must belong to the service user, not root.
 as_user mkdir -p "$QUADLET_DIR" "$UNIT_DIR"
 chown -R "$SERVICE_USER:$SERVICE_USER" "$HOME_DIR/.config"
-install -o "$SERVICE_USER" -g "$SERVICE_USER" -m 644 "$DEPLOY_DIR/Caddyfile" "$APP_DIR/Caddyfile"
+install -d -o "$SERVICE_USER" -g "$SERVICE_USER" -m 755 "$APP_DIR/caddy"
+caddyfile=Caddyfile
+[[ -n $TRACKFOLIO_DOMAIN ]] || caddyfile=Caddyfile.http
+install -o "$SERVICE_USER" -g "$SERVICE_USER" -m 644 "$DEPLOY_DIR/caddy/$caddyfile" "$APP_DIR/caddy/Caddyfile"
+install -o "$SERVICE_USER" -g "$SERVICE_USER" -m 644 "$DEPLOY_DIR/caddy/site.conf" "$APP_DIR/caddy/site.conf"
 
 if [[ -f $APP_DIR/db.env && ! -f $APP_DIR/app.env ]] \
     || [[ ! -f $APP_DIR/db.env && -f $APP_DIR/app.env ]]; then
@@ -134,6 +138,7 @@ tar -C "$REPO_DIR" --exclude=.git --exclude=.venv --exclude=data --exclude=.cach
     | tar -C "$SRC_DIR" -xf -
 chown -R "$SERVICE_USER:$SERVICE_USER" "$SRC_DIR"
 as_user podman build -t localhost/trackfolio:latest -f "$SRC_DIR/Containerfile" "$SRC_DIR"
+as_user podman image prune -f >/dev/null  # drop the previous image and build stages
 
 # --- start --------------------------------------------------------------------------------------
 log "Starting services"

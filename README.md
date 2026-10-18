@@ -99,14 +99,16 @@ FX series are stored in `price` under their Yahoo ticker.
 `deploy/setup.sh` provisions a fresh Oracle Linux 10 host (x86_64 or aarch64) as root; everything then runs rootless as the user `trackfolio`:
 
 ```bash
-sudo TRACKFOLIO_DOMAIN=trackfolio.example.com TRACKFOLIO_ACME_EMAIL=you@example.com bash deploy/setup.sh
+sudo TRACKFOLIO_DOMAIN=trackfolio.example.com bash deploy/setup.sh
 ```
+
+Without `TRACKFOLIO_DOMAIN` the site is served over plain HTTP on port 80 with non-`Secure` cookies: enough to test the stack, not to use it. Re-run with the domain once DNS points at the host.
 
 | Piece | Where | Notes |
 |-------|-------|-------|
 | App image | `Containerfile` | Built on the host; runs read-only, no capabilities, as an unprivileged user |
-| PostgreSQL 17, app, Caddy | `deploy/quadlet/` | Podman Quadlets on a private network; only Caddy publishes 80/443 |
-| HTTPS | `deploy/Caddyfile` | Automatic certificates for `$TRACKFOLIO_DOMAIN`; security headers, 1 MB body limit |
+| PostgreSQL 17, app, Caddy | `deploy/quadlet/` | Podman Quadlets; database and app share a private network, the app is published on `127.0.0.1:8000` only |
+| HTTPS | `deploy/caddy/` | Caddy on the host network (rootless podman hides client IPs behind a bridge network) listening on 8080/8443, with firewalld forwarding 80/443; automatic certificates for `$TRACKFOLIO_DOMAIN`; security headers, 1 MB body limit |
 | Price refresh | `deploy/systemd/trackfolio-refresh.timer` | `trackfolio refresh-prices` every 15 minutes, weekdays 09:00-22:15 Europe/Rome |
 | Secrets | `~trackfolio/trackfolio/*.env` (mode 600) | Generated on first run, never overwritten, never printed |
 | Health and logs | `GET /health`, stdout | JSON lines with method, path (no query string), status and duration only |
@@ -116,7 +118,7 @@ Login is blocked with HTTP 429 (and a `Retry-After` header) after 5 failed attem
 Re-run the script to deploy new code. After it finishes, point a DNS A record at the host, open ports 80/443 (tcp) and 443 (udp) in the cloud network security list, and create the first administrator as the script prints.
 
 > [!NOTE]
-> Verified locally: image build, Quadlet generation, Caddyfile validation, and the app against PostgreSQL (login, transactions, price refresh, health). Not verified: `deploy/setup.sh` itself on a real Oracle Linux 10 host, Let's Encrypt issuance, and the pages and charts in a browser behind Caddy. `net.ipv4.ip_unprivileged_port_start=80` lets any local user bind ports 80 and above, which is acceptable on a single-purpose host. There is no backup yet: the database lives in the `trackfolio-db` volume only.
+> Verified on an Oracle Linux 10.2 aarch64 VM (1 core, 3.6 GB) without a domain: `setup.sh`, all Quadlet units, the app against PostgreSQL (login, transactions, price refresh job, restart persistence, rate limiting, migrations), and the real client address reaching the app through Caddy from loopback (a client-supplied `X-Forwarded-For` is ignored). Not verified: Let's Encrypt issuance, the client address for traffic arriving from the Internet through firewalld's forward, a reboot, and the pages and charts in a browser behind Caddy. The stack uses about 180 MB of RAM. There is no backup yet: the database lives in the `trackfolio-db` volume only.
 
 ## Known limits
 
